@@ -36,6 +36,11 @@ const userSchema = new mongoose.Schema({
     }
 });
 
+userSchema.methods.generateJWT = function () {
+    const token = jwt.sign({ userId: this._id }, process.env.JWT_SECRET);
+    return token;
+}
+
 userSchema.pre('save', async function (next) {
     const user = this;
     if (!user.isModified('password')) return next();
