@@ -8,6 +8,11 @@ const eventSchema = new mongoose.Schema({
 });
 
 const serviceSchema = new mongoose.Schema({
+    project: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Project',
+        required: true
+    },
     serviceId: {
         type: String,
         required: true,
@@ -85,13 +90,13 @@ const serviceSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'running', 'success', 'failed', 'deploying'],
+        enum: ['pending', 'building', 'deploying', 'running', 'failed', 'stopped'],
         default: 'pending'
     },
-    logs: {
-        type: [String],
-        default: []
-    },
+    logs: [{
+        message: String,
+        timestamp: Date
+    }],
     // environment variables
     environmentVariables: {
         type: [{
@@ -100,6 +105,17 @@ const serviceSchema = new mongoose.Schema({
         }],
         default: []
     },
+    port: {
+        type: Number
+    },
+    currentDeployment: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Deployment"
+    },
+    deploymentNumber: {
+        type: Number,
+        default: 0
+    }
 }, {
     timestamps: true
 });
