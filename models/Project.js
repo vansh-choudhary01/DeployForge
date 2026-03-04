@@ -1,6 +1,11 @@
 import mongoose from 'mongoose';
 
 const projectSchema = new mongoose.Schema({
+    projectId: {
+        type: String,
+        required: true,
+        unique: true
+    },
     user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
@@ -18,6 +23,7 @@ const projectSchema = new mongoose.Schema({
     }
 });
 
+projectSchema.index({ "projectId": 1 });
 projectSchema.index({ "user": 1 });
 
 export default mongoose.model('Project', projectSchema);
