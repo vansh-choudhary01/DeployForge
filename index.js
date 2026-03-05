@@ -1,6 +1,9 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import allRoutes from './routes/index.js';
+import cors from 'cors';
+import dotenv from 'dotenv';
+dotenv.config();
 
 const app = express();
 
@@ -16,6 +19,7 @@ function connectDB() {
 connectDB();
 
 app.use(express.json());
+app.use(cors());
 
 app.get('/', (req, res) => {
     res.send("Hello, World!");

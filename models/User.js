@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 
 const userSchema = new mongoose.Schema({
     fullName: {
@@ -16,23 +17,25 @@ const userSchema = new mongoose.Schema({
         required: true
     },
     gitDeploymentCredentials: {
-        username: {
+        provider: {
             type: String,
-            required: false
+            default: "github"
+        },
+        username: {
+            type: String
         },
         token: {
-            type: String,
-            required: false
+            type: String
         },
-        repositoryUrls: {
-            type: [String],
-            required: false
-        },
-        projects: {
-            type: [mongoose.Schema.Types.ObjectId],
-            ref: 'Project',
-            required: false
+        connectedAt: {
+            type: Date,
+            default: Date.now
         }
+    },
+    projects: {
+        type: [mongoose.Schema.Types.ObjectId],
+        ref: 'Project',
+        required: false
     }
 });
 
@@ -41,13 +44,12 @@ userSchema.methods.generateJWT = function () {
     return token;
 }
 
-userSchema.pre('save', async function (next) {
+userSchema.pre('save', async function () {
     const user = this;
-    if (!user.isModified('password')) return next();
+    if (!user.isModified('password')) return;
 
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(user.password, salt);
-    next();
 })
 
 export default mongoose.model('User', userSchema);
