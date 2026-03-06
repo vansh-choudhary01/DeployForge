@@ -23,10 +23,9 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const response = await api.post('/users/login', formData);
-      const { token } = response.data;
-      
-      localStorage.setItem('authToken', token);
+      await api.post('/users/login', formData);
+      // Token is stored in httpOnly cookie by backend
+      // Just navigate to dashboard
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed');
