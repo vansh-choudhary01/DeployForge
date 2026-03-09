@@ -88,7 +88,6 @@ export async function deployService(req, res) {
       branch,
       rootDirectory,
       buildCommand,
-      publishDirectory,
       preDeployCommand,
       startCommand,
       healthCheckPath,
@@ -99,8 +98,6 @@ export async function deployService(req, res) {
     if (
       !repo ||
       !branch ||
-      !buildCommand ||
-      !publishDirectory ||
       !preDeployCommand ||
       !startCommand ||
       !healthCheckPath
@@ -118,7 +115,6 @@ export async function deployService(req, res) {
       gitBranch: branch,
       rootDirectory,
       buildCommand,
-      publishDirectory,
       preDeployCommand,
       startCommand,
       healthCheckPath,

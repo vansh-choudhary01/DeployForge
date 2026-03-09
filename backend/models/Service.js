@@ -65,11 +65,7 @@ const serviceSchema = new mongoose.Schema({
     },
     buildCommand: {
         type: String,
-        default: 'npm install && npm run build'
-    },
-    publishDirectory: {
-        type: String,
-        default: 'build'
+        default: ''
     },
     preDeployCommand: {
         type: String,

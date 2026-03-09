@@ -83,6 +83,9 @@ async function deployViaSSH(deployment, service, logs) {
             `cd ${appName}`,
         ];
 
+        if (service.rootDirectory && service.rootDirectory !== '/') {
+            commands.push(`cd ${service.rootDirectory}`);
+        }
         // Add npm install/build commands
         if (service.preDeployCommand) {
             commands.push(`${service.preDeployCommand}`);

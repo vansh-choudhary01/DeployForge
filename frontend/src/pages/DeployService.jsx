@@ -22,7 +22,6 @@ export default function DeployService() {
     projectId: '',
     rootDirectory: '/',
     buildCommand: 'npm run build',
-    publishDirectory: 'dist',
     preDeployCommand: 'npm install',
     startCommand: 'npm start',
     healthCheckPath: '/',
@@ -388,21 +387,6 @@ export default function DeployService() {
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-sm"
               />
               <p className="text-xs text-slate-400 mt-1">$ {formData.buildCommand}</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Publish Directory *
-              </label>
-              <input
-                type="text"
-                name="publishDirectory"
-                value={formData.publishDirectory}
-                onChange={handleInputChange}
-                required
-                placeholder="dist"
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
-              />
             </div>
 
             <div>
