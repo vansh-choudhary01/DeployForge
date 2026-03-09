@@ -13,11 +13,6 @@ const serviceSchema = new mongoose.Schema({
         ref: 'Project',
         required: true
     },
-    serviceId: {
-        type: String,
-        required: true,
-        unique: true
-    },
     name: {
         type: String,
         required: true

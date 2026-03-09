@@ -25,4 +25,25 @@ api.interceptors.response.use(
   }
 );
 
+// Projects endpoints
+export const projectAPI = {
+  create: (projectData) => api.post('/projects', projectData),
+  getAll: () => api.get('/projects'),
+  getById: (id) => api.get(`/projects/${id}`),
+  delete: (id) => api.delete(`/projects/${id}`),
+};
+
+// Services endpoints
+export const serviceAPI = {
+  getAll: () => api.get('/services'),
+  deploy: (serviceData) => api.post('/services/deploy', serviceData),
+  getById: (id) => api.get(`/services/${id}`),
+  redeploy: (id) => api.post(`/services/${id}/redeploy`),
+  delete: (id) => api.delete(`/services/${id}`),
+  getLogs: (id) => api.get(`/services/${id}/logs`),
+  setEnv: (id, envData) => api.post(`/services/${id}/env`, envData),
+  deleteEnv: (id, key) => api.delete(`/services/${id}/env/${key}`),
+  validateRepo: (repoUrl) => api.post('/services/validate-repo', { repo: repoUrl }),
+};
+
 export default api;

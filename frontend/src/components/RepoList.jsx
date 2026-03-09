@@ -1,5 +1,5 @@
 import React from 'react';
-import { HiLockClosed, HiOutlineArrowRight } from 'react-icons/hi2';
+import { HiOutlineArrowRight } from 'react-icons/hi2';
 
 export default function RepoList({ repos, onSelectRepo, loading = false }) {
   if (loading) {
@@ -29,12 +29,7 @@ export default function RepoList({ repos, onSelectRepo, loading = false }) {
           onClick={() => onSelectRepo(repo)}
         >
           <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <h4 className="text-white font-medium">{repo.name}</h4>
-              {repo.private && (
-                <HiLockClosed className="w-4 h-4 text-slate-400" />
-              )}
-            </div>
+            <h4 className="text-white font-medium">{repo.name}</h4>
             <p className="text-sm text-slate-400 mt-1">{repo.description || 'No description'}</p>
           </div>
           <button

@@ -5,7 +5,6 @@ import {
   HiOutlineCog,
   HiOutlineCodeBracket,
   HiOutlineRocketLaunch,
-  HiOutlineLink,
   HiOutlineSparkles,
 } from 'react-icons/hi2';
 
@@ -16,7 +15,6 @@ export default function Sidebar() {
     { path: '/dashboard', label: 'Dashboard', icon: HiOutlineSquares2X2 },
     { path: '/projects', label: 'Projects', icon: HiOutlineCodeBracket },
     { path: '/services', label: 'Services', icon: HiOutlineRocketLaunch },
-    { path: '/github', label: 'Git Credentials', icon: HiOutlineLink },
     { path: '/settings', label: 'Settings', icon: HiOutlineCog },
   ];
 

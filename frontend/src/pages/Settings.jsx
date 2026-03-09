@@ -4,7 +4,6 @@ import { HiOutlineExclamationCircle } from 'react-icons/hi2';
 export default function Settings() {
   const [formData, setFormData] = useState({
     email: 'user@example.com',
-    gitHubUsername: '',
     notifications: true,
   });
 
@@ -42,18 +41,6 @@ export default function Settings() {
               value={formData.email}
               onChange={handleChange}
               className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-white mb-2">GitHub Username</label>
-            <input
-              type="text"
-              name="gitHubUsername"
-              value={formData.gitHubUsername}
-              onChange={handleChange}
-              placeholder="@username"
-              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500"
             />
           </div>
         </div>

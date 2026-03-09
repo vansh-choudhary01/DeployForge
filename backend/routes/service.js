@@ -1,8 +1,12 @@
 import { Router } from 'express';
-import { deployService, getService, redeployService, deleteService, getServiceLogs, setServiceEnv, deleteServiceEnv } from '../controllers/services.js';
+import { validateRepo, getServices, deployService, getService, redeployService, deleteService, getServiceLogs, setServiceEnv, deleteServiceEnv } from '../controllers/services.js';
 
 const router = Router();
 
+// Validation endpoint
+router.post('/validate-repo', validateRepo);
+
+router.get('/', getServices);
 router.post('/deploy', deployService);
 router.get('/:id', getService);
 router.post('/:id/redeploy', redeployService);

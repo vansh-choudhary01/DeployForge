@@ -9,7 +9,6 @@ import Navbar from './components/Navbar';
 
 // Pages
 import Dashboard from './pages/Dashboard';
-import GithubConnect from './pages/GithubConnect';
 import Services from './pages/Services';
 import ServiceDetails from './pages/ServiceDetails';
 import DeploymentLogs from './pages/DeploymentLogs';
@@ -47,14 +46,6 @@ function App() {
           element={
             <ProtectedLayout>
               <Dashboard />
-            </ProtectedLayout>
-          }
-        />
-        <Route
-          path="/github"
-          element={
-            <ProtectedLayout>
-              <GithubConnect />
             </ProtectedLayout>
           }
         />

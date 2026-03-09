@@ -2,6 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import allRoutes from './routes/index.js';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -18,8 +19,12 @@ function connectDB() {
 
 connectDB();
 
+app.use(cors({
+    origin: 'http://localhost:3000',
+    credentials: true
+}));
+app.use(cookieParser());
 app.use(express.json());
-app.use(cors());
 
 app.get('/', (req, res) => {
     res.send("Hello, World!");

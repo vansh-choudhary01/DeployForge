@@ -86,23 +86,23 @@ export default function Dashboard() {
         <h2 className="text-xl font-semibold text-white mb-6">Quick Actions</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <button
-            onClick={() => navigate('/github')}
+            onClick={() => navigate('/services')}
             className="flex items-center justify-between p-4 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors group"
           >
             <div className="text-left">
-              <p className="font-medium text-white">Connect GitHub</p>
-              <p className="text-sm text-slate-400">Add your GitHub account</p>
+              <p className="font-medium text-white">Deploy Service</p>
+              <p className="text-sm text-slate-400">Deploy a new service</p>
             </div>
             <HiArrowRight className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors" />
           </button>
 
           <button
-            onClick={() => navigate('/services')}
+            onClick={() => navigate('/projects')}
             className="flex items-center justify-between p-4 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors group"
           >
             <div className="text-left">
-              <p className="font-medium text-white">View Services</p>
-              <p className="text-sm text-slate-400">Manage your deployments</p>
+              <p className="font-medium text-white">Manage Projects</p>
+              <p className="text-sm text-slate-400">View your projects</p>
             </div>
             <HiArrowRight className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors" />
           </button>

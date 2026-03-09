@@ -16,22 +16,6 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    gitDeploymentCredentials: {
-        provider: {
-            type: String,
-            default: "github"
-        },
-        username: {
-            type: String
-        },
-        token: {
-            type: String
-        },
-        connectedAt: {
-            type: Date,
-            default: Date.now
-        }
-    },
     projects: {
         type: [mongoose.Schema.Types.ObjectId],
         ref: 'Project',
