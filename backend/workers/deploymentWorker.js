@@ -1,193 +1,200 @@
-import Deployment from "../models/Deployment";
+import Deployment from "../models/Deployment.js";
+import Service from "../models/Service.js";
+import { Client } from 'ssh2';
+import fs from 'fs';
+import path from 'path';
 
+// Start deployment worker - polls every 2 seconds for queued deployments
 setInterval(async () => {
-    const deployment = await Deployment.findOneAndUpdate(
-        { status: "queued" },
-        { status: "building" }
-    );
+    try {
+        const deployment = await Deployment.findOneAndUpdate(
+            { status: "queued" },
+            { status: "building" }
+        );
 
-    if (!deployment) return;
+        if (!deployment) return;
 
-    runDeployment(deployment);
+        // Get service details
+        const service = await Service.findById(deployment.service);
+        if (!service) {
+            await Deployment.updateOne(
+                { _id: deployment._id },
+                { status: "failed", logs: ["Service not found"] }
+            );
+            return;
+        }
+
+        await runDeployment(deployment, service);
+    } catch (err) {
+        console.error('Worker error:', err);
+    }
 }, 2000);
 
-async function runDeployment(deployment) {
-    try {
-        await cloneRepo()
-        await buildDocker()
-        await runContainer()
+async function runDeployment(deployment, service) {
+    const logs = [];
 
-        deployment.status = "running"
+    try {
+        logs.push(`[${new Date().toISOString()}] Starting deployment...`);
+        logs.push(`Repository: ${service.gitRepositoryUrl}`);
+        logs.push(`Branch: ${service.gitBranch}`);
+
+        // Deploy using SSH
+        await deployViaSSH(deployment, service, logs);
+
+        // Update service status
+        service.status = "running";
+        service.publicUrl = `http://${process.env.EC2_HOST}:${deployment.port}`;
+        
+        // Update deployment
+        deployment.status = "running";
+        deployment.logs = logs;
+        deployment.deployedUrl = service.publicUrl;
+        
+        logs.push(`[${new Date().toISOString()}] Deployment completed successfully!`);
+        logs.push(`Service available at: ${service.publicUrl}`);
+
     } catch (err) {
-        deployment.status = "failed"
+        console.error('Deployment error:', err);
+        logs.push(`[${new Date().toISOString()}] ERROR: ${err.message}`);
+        
+        service.status = "failed";
+        deployment.status = "failed";
+        deployment.logs = logs;
     }
 
-    await deployment.save()
+    // Save changes
+    await service.save();
+    await deployment.save();
 }
 
-class DeployTool extends Tool {
-    constructor() {
-        super('deploy_repo', 'Deploy a GitHub repository to preconfigured EC2 instance');
-    }
+async function deployViaSSH(deployment, service, logs) {
+    const appName = `app-${deployment._id}`;
+    const port = deployment.port || 3000;
+    const { gitRepositoryUrl, gitBranch, startCommand, environmentVariables } = service;
 
-    async call(input, context = {}) {
-        const { repoUrl, port = getNextPort() } = input;
-        const { env } = context;
-        console.log(input);
+    logs.push(`[${new Date().toISOString()}] Initializing deployment...`);
 
-        if (!repoUrl) {
-            return { ok: false, error: 'repoUrl required' };
+    try {
+        // Build commands to execute on EC2
+        const commands = [
+            `mkdir -p ~/apps`,
+            `cd ~/apps`,
+            `git clone --branch ${gitBranch} ${gitRepositoryUrl} ${appName}`,
+            `cd ${appName}`,
+        ];
+
+        // Add npm install/build commands
+        if (service.preDeployCommand) {
+            commands.push(`${service.preDeployCommand}`);
+        }
+        if (service.buildCommand) {
+            commands.push(`${service.buildCommand}`);
         }
 
-        if (!repoUrl.startsWith('https://github.com/')) {
-            return { ok: false, error: 'Only GitHub repos allowed' };
+        // Create .env file if environment variables exist
+        if (environmentVariables && environmentVariables.length > 0) {
+            const envContent = environmentVariables
+                .map(ev => `${ev.key}=${ev.value}`)
+                .join('\\n');
+            
+            commands.push(`cat > .env << 'EOF'\n${envContent}\nEOF`);
         }
 
-        const appName = `app-${Date.now()}`;
-
-        console.log(`Deploying ${repoUrl} as ${appName} on port ${port}`);
-
-        try {
-            // Step 1: Clone repo and inspect structure
-            const inspectCommands = [
-                'mkdir -p ~/apps',
-                'cd ~/apps',
-                `git clone ${repoUrl} ${appName}`,
-                `cd ${appName}`,
-                'echo "FILES_START"',
-                'ls',
-                'echo "FILES_END"',
-                'echo "PACKAGE_START"',
-                '[ -f package.json ] && cat package.json || echo "NO_PACKAGE_JSON"',
-                'echo "PACKAGE_END"'
-            ];
-
-            const inspectResult = await runWithQueue(() => runSSHCommands(inspectCommands));
-
-            console.log('Inspect result:');
-            console.log(inspectResult);
-
-            // Step 2: Ask AI how to start
-            const prompt = `
-You are a deployment assistant.
-
-Repository structure:
-${inspectResult.output}
-
-Determine how to start this Node.js project.
-
-Rules:
-- If package.json has "start" script → use "npm start"
-- If package.json has main → use "node <main>"
-- If index.js exists → use "node index.js"
-- If nothing found → return null
-
-Return JSON only:
-{ "startCommand": "npm start" }
-`;
-
-            const llmResult = await Planner.callLLM(prompt);
-
-            console.log('LLM result:');
-            console.log(llmResult);
-
-            if (!llmResult || !llmResult.startCommand) {
-                return { ok: false, error: 'Could not determine start command' };
-            }
-
-            const startCommand = llmResult.startCommand;
-
-            // Step 3: Create Dockerfile dynamically
-            const dockerCommands = [
-                `cd ~/apps/${appName}`
-            ];
-
-            // Create .env file if env provided
-            if (env && Object.keys(env).length > 0) {
-                const envLines = Object.entries(env).map(([k, v]) => `${k}=${v}`).join('\\n');
-                dockerCommands.push(`echo -e '${envLines}' > .env`);
-            }
-
-            dockerCommands.push(
-                `echo 'FROM node:20
+        // Create Dockerfile
+        const dockerfile = `FROM node:20
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
-EXPOSE 3000
-CMD ${JSON.stringify(startCommand.split(' '))}
-' > Dockerfile`,
-                `docker build -t ${appName} .`
-            );
+EXPOSE ${port}
+CMD ["${startCommand.split(' ').join('", "')}"]`;
 
-            // Add env-file flag if env provided
-            const dockerRunCmd = env && Object.keys(env).length > 0 
-                ? `docker run -d --name ${appName} -p ${port}:4000 --env-file .env ${appName}`
-                : `docker run -d --name ${appName} -p ${port}:4000 ${appName}`;
-            
-            dockerCommands.push(dockerRunCmd);
+        commands.push(`cat > Dockerfile << 'EOF'\n${dockerfile}\nEOF`);
 
-            const deployResult = await runSSHCommands(dockerCommands);
-
-            console.log('Deploy result:');
-            console.log(deployResult);
-
-            return {
-                ok: true,
-                result: {
-                    appName,
-                    startCommand,
-                    url: `http://${process.env.EC2_HOST}:${port}`,
-                    logs: deployResult.output
-                }
-            };
-
-        } catch (err) {
-            console.error('Deployment error:', err);
-            return { ok: false, error: err.message };
+        // Build and run Docker image
+        commands.push(`docker build -t ${appName} .`);
+        
+        let dockerRunCmd = `docker run -d --name ${appName} -p ${port}:${port}`;
+        if (environmentVariables && environmentVariables.length > 0) {
+            dockerRunCmd += ` --env-file .env`;
         }
+        dockerRunCmd += ` ${appName}`;
+        commands.push(dockerRunCmd);
+
+        // Execute all commands via SSH
+        logs.push(`[${new Date().toISOString()}] Connecting to EC2...`);
+        const result = await executeSSHCommands(commands, logs);
+
+        logs.push(`[${new Date().toISOString()}] Docker container started: ${appName}`);
+        
+        deployment.dockerImage = appName;
+        deployment.port = port;
+
+    } catch (err) {
+        throw new Error(`SSH deployment failed: ${err.message}`);
     }
 }
 
-
-function runSSHCommands(commands) {
+function executeSSHCommands(commands, logs) {
     return new Promise((resolve, reject) => {
         const conn = new Client();
 
         conn.on('ready', () => {
-            conn.exec(commands.join(' && '), (err, stream) => {
-                if (err) return reject(err);
+            logs.push(`[${new Date().toISOString()}] Connected to EC2`);
+            
+            const fullCommand = commands.join(' && ');
+            
+            conn.exec(fullCommand, (err, stream) => {
+                if (err) {
+                    conn.end();
+                    return reject(err);
+                }
 
                 let output = '';
                 let error = '';
 
-                stream.on('data', data => {
-                    output += data.toString();
+                stream.on('data', (data) => {
+                    const message = data.toString();
+                    output += message;
+                    logs.push(`[${new Date().toISOString()}] ${message}`);
                 });
 
-                stream.stderr.on('data', data => {
-                    error += data.toString();
+                stream.stderr.on('data', (data) => {
+                    const message = data.toString();
+                    error += message;
+                    logs.push(`[${new Date().toISOString()}] ERROR: ${message}`);
                 });
 
-                // change: check exit code
                 stream.on('close', (code) => {
                     conn.end();
 
                     if (code === 0) {
-                        resolve({ output, error });
+                        logs.push(`[${new Date().toISOString()}] Commands executed successfully`);
+                        resolve({ output, error: '', code });
                     } else {
-                        reject(new Error(error || `Command failed with code ${code}`));
+                        reject(new Error(error || `Commands failed with exit code ${code}`));
                     }
                 });
             });
         });
 
-        // small safe wrapper
-        conn.on('error', (err) => reject(err));
-        conn.connect({
-            host: process.env.EC2_HOST,
-            username: process.env.EC2_USER,
-            privateKey: fs.readFileSync(process.env.EC2_SSH_KEY_PATH)
+        conn.on('error', (err) => {
+            logs.push(`[${new Date().toISOString()}] CONNECTION ERROR: ${err.message}`);
+            reject(err);
         });
+
+        // Connect to EC2
+        try {
+            conn.connect({
+                host: process.env.EC2_HOST || 'localhost',
+                port: 22,
+                username: process.env.EC2_USER || 'ubuntu',
+                privateKey: fs.readFileSync(process.env.EC2_SSH_KEY_PATH || path.join(process.cwd(), 'id_rsa')),
+                readyTimeout: 30000,
+            });
+        } catch (err) {
+            logs.push(`[${new Date().toISOString()}] SSH CONFIG ERROR: ${err.message}`);
+            reject(new Error(`Failed to read SSH key: ${err.message}`));
+        }
     });
 }
