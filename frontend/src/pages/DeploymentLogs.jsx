@@ -31,7 +31,7 @@ export default function DeploymentLogs() {
           ...prevLogs,
           {
             message: data.log,
-            type: data.log.includes('ERROR') ? 'error' : data.log.includes('success') ? 'success' : 'info',
+            type: data.log.includes('ERROR') ? 'error' : data.log.includes('success') ? 'success' : data.log.includes('WARNING') ? 'warning' : 'info',
             timestamp: new Date().toLocaleTimeString(),
           }
         ]);

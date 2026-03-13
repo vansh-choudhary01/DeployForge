@@ -119,7 +119,6 @@ export async function deployService(req, res) {
       healthCheckPath,
       status: "pending",
       environmentVariables: environmentVariables || [],
-      port: 3000,
       logs: [],
     });
 
