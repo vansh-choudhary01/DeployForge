@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { HiOutlineSparkles } from 'react-icons/hi2';
+import { AuthContext } from '../contexts/AuthContext';
 import api from '../utils/api';
 
 export default function Login() {
   const navigate = useNavigate();
+  const { login } = useContext(AuthContext);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
@@ -23,7 +25,11 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await api.post('/users/login', formData);
+      const response = await api.post('/users/login', formData);
+      // Update auth context with user data
+      if (response.data.user) {
+        login(response.data.user);
+      }
       // Token is stored in httpOnly cookie by backend
       // Just navigate to dashboard
       navigate('/dashboard');

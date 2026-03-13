@@ -57,9 +57,11 @@ export async function loginUser(req, res) {
             maxAge: 60 * 60 * 24 * 7, // 7 days
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
         });
 
-        res.status(200).json({ message: 'Logged in successfully' });
+        res.status(200).json({ message: 'Logged in successfully', user: { id: user._id, email: user.email, fullName: user.fullName } });
     } catch (err) {
         console.log(err);
         res.status(500).json({ message: 'Internal server error', error: err.message });
@@ -95,9 +97,11 @@ export async function verifyUser(req, res) {
             maxAge: 60 * 60 * 24 * 7, // 7 days
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
         });
 
-        res.status(200).json({ message: 'Logged in successfully' });
+        res.status(200).json({ message: 'Logged in successfully', user: { id: user._id, email: user.email, fullName: user.fullName } });
     } catch (err) {
         console.log(err);
         res.status(500).json({ message: 'Internal server error', error: err.message });
@@ -110,9 +114,7 @@ export async function getCurrentUser(req, res) {
         res.status(200).json({
             id: user._id,
             email: user.email,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            fullName: user.firstName + ' ' + user.lastName
+            fullName: user.fullName,
         });
     } catch (err) {
         console.log(err);

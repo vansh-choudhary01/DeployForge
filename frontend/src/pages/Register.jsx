@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { HiOutlineSparkles } from 'react-icons/hi2';
+import { AuthContext } from '../contexts/AuthContext';
 import api from '../utils/api';
 
 export default function Register() {
   const navigate = useNavigate();
+  const { login } = useContext(AuthContext);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -88,12 +90,16 @@ export default function Register() {
       setLoading(true);
 
       try {
-        await api.post('/users/verify', {
+        const response = await api.post('/users/verify', {
           email: formData.email,
           otp: formData.otp,
         });
 
         setSuccess('Account created and logged in successfully! Redirecting to dashboard...');
+        // Update auth context with user data
+        if (response.data.user) {
+          login(response.data.user);
+        }
         setTimeout(() => navigate('/dashboard'), 2000);
       } catch (err) {
         setError(err.response?.data?.message || 'OTP verification failed');

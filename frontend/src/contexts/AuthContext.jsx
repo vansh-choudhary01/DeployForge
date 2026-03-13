@@ -19,6 +19,10 @@ export function AuthProvider({ children }) {
       // If this succeeds, the user is authenticated
       const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:4000/api'}/users/me`, {
         credentials: 'include', // Include cookies
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
       
       if (response.ok) {
@@ -30,6 +34,7 @@ export function AuthProvider({ children }) {
         setUser(null);
       }
     } catch (error) {
+      console.error('Auth check failed:', error);
       setIsAuthenticated(false);
       setUser(null);
     } finally {
@@ -37,7 +42,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const login = useCallback((token, userData) => {
+  const login = useCallback((userData) => {
     // For cookie-based auth, we don't need to store token locally
     // The backend handles the cookie
     setIsAuthenticated(true);
@@ -50,6 +55,9 @@ export function AuthProvider({ children }) {
       await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:4000/api'}/users/logout`, {
         method: 'POST',
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
     } catch (error) {
       console.error('Logout error:', error);

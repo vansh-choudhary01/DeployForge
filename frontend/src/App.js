@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import './App.css';
 import './tailwind.css';
+import { AuthProvider } from './contexts/AuthContext';
 
 // Components
 import Sidebar from './components/Sidebar';
@@ -34,11 +35,12 @@ function ProtectedLayout({ children }) {
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        {/* Auth Routes - No Sidebar/Navbar */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+    <AuthProvider>
+      <Router>
+        <Routes>
+          {/* Auth Routes - No Sidebar/Navbar */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
 
         {/* Protected Routes - With Sidebar/Navbar */}
         <Route
@@ -103,6 +105,7 @@ function App() {
         <Route path="*" element={<Navigate to="/login" />} />
       </Routes>
     </Router>
+    </AuthProvider>
   );
 }
 

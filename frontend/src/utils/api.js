@@ -46,4 +46,10 @@ export const serviceAPI = {
   validateRepo: (repoUrl) => api.post('/services/validate-repo', { repo: repoUrl }),
 };
 
+// Deployments endpoints
+export const deploymentAPI = {
+  getById: (id) => api.get(`/deployments/${id}`),
+  getLogs: (id) => api.get(`/deployments/${id}/logs`),
+};
+
 export default api;

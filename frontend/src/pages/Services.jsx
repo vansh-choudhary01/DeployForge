@@ -138,7 +138,8 @@ export default function Services() {
           {services.map((service) => (
             <div
               key={service._id}
-              className="bg-slate-800 border border-slate-700 rounded-lg p-6 hover:border-slate-600 transition"
+              onClick={() => navigate(`/services/${service._id}`)}
+              className="bg-slate-800 border border-slate-700 rounded-lg p-6 hover:border-slate-600 transition cursor-pointer"
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
@@ -178,7 +179,7 @@ export default function Services() {
               )}
 
               {/* Actions */}
-              <div className="flex gap-2">
+              <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                 <button
                   onClick={() => handleRedeploy(service._id)}
                   disabled={actionLoading[service._id] === 'redeploy'}

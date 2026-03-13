@@ -15,26 +15,17 @@ export default function ServiceDetails() {
 
   useEffect(() => {
     fetchService();
-    fetchDeployments();
   }, [id]);
 
   const fetchService = async () => {
     try {
       const response = await api.get(`/services/${id}`);
-      setService(response.data.data);
+      setService(response.data.service);
+      setDeployments(response.data.deployments || []);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to fetch service');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchDeployments = async () => {
-    try {
-      const response = await api.get(`/deployments/${id}`);
-      setDeployments(response.data.data || []);
-    } catch (err) {
-      console.error('Failed to fetch deployments:', err);
     }
   };
 
@@ -47,7 +38,6 @@ export default function ServiceDetails() {
       setError('');
       // Refresh service and deployments
       await fetchService();
-      await fetchDeployments();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to redeploy service');
     } finally {
@@ -155,8 +145,9 @@ export default function ServiceDetails() {
             {redeploying ? 'Redeploying...' : 'Redeploy'}
           </button>
           <button
-            onClick={() => navigate(`/deployments/${service.lastDeploymentId}/logs`)}
-            className="px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+            onClick={() => deployments.length > 0 && navigate(`/deployments/${deployments[0]._id}/logs`)}
+            disabled={deployments.length === 0}
+            className="px-6 py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-600 text-white rounded-lg transition-colors"
           >
             View Logs
           </button>

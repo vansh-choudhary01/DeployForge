@@ -91,9 +91,8 @@ export async function deployService(req, res) {
       preDeployCommand,
       startCommand,
       healthCheckPath,
-      commitHash,
-      commitMessage,
       projectId,
+      environmentVariables,
     } = req.body;
     if (
       !repo ||
@@ -119,7 +118,7 @@ export async function deployService(req, res) {
       startCommand,
       healthCheckPath,
       status: "pending",
-      environmentVariables: [],
+      environmentVariables: environmentVariables || [],
       port: 3000,
       logs: [],
     });
@@ -127,12 +126,11 @@ export async function deployService(req, res) {
     const deployment = await Deployment.create({
       service: service._id,
       status: "queued",
-      commitHash,
-      commitMessage,
+      commitHash: "",
+      commitMessage: "",
       logs: [],
       dockerImage: "",
       containerId: "",
-      port: 3000,
       deployedUrl: "",
     });
 
@@ -198,7 +196,6 @@ export async function redeployService(req, res) {
       logs: [],
       dockerImage: '',
       containerId: '',
-      port: service.port || 3000,
       deployedUrl: '',
     });
 

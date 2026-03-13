@@ -1,2 +1,4 @@
 node_modules
 .env
+Agent-Auto.pem
+/Agent-Auto.pem

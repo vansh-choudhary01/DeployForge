@@ -167,8 +167,14 @@ export default function DeployService() {
     setLoading(true);
 
     try {
-      const response = await serviceAPI.deploy(formData);
-      navigate(`/services/${response.data.service._id}`);
+      const deployData = {
+        ...formData,
+        environmentVariables: envVars,
+      };
+      
+      const response = await serviceAPI.deploy(deployData);
+      // Navigate to deployment logs to show live progress
+      navigate(`/deployments/${response.data.deployment._id}/logs`);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to deploy service');
     } finally {

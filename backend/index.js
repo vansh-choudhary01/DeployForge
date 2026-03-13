@@ -4,9 +4,21 @@ import allRoutes from './routes/index.js';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import './workers/deploymentWorker.js';
 dotenv.config();
 
 const app = express();
+const server = createServer(app);
+
+// Socket.io initialization
+export const io = new Server(server, {
+    cors: {
+        origin: 'http://localhost:3000',
+        credentials: true,
+    }
+});
 
 function connectDB() {
     mongoose.connect(process.env.MONGO_URI)
@@ -20,8 +32,10 @@ function connectDB() {
 connectDB();
 
 app.use(cors({
-    origin: 'http://localhost:3000',
-    credentials: true
+    origin: ['http://localhost:3000'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(cookieParser());
 app.use(express.json());
@@ -32,8 +46,17 @@ app.get('/', (req, res) => {
 
 app.use('/api', allRoutes);
 
+// Socket.io connection handling
+io.on('connection', (socket) => {
+    console.log('New client connected:', socket.id);
+    
+    socket.on('disconnect', () => {
+        console.log('Client disconnected:', socket.id);
+    });
+});
+
 const port = process.env.PORT || 4000;
 
-app.listen(port, () => {
+server.listen(port, () => {
     console.log(`Server is running on port ${port}`);
 })

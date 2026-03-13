@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { HiArrowLeft } from 'react-icons/hi2';
+import { io } from 'socket.io-client';
 import LogViewer from '../components/LogViewer';
 import StatusBadge from '../components/StatusBadge';
-import api from '../utils/api';
+import { deploymentAPI } from '../utils/api';
 
 export default function DeploymentLogs() {
   const { deploymentId } = useParams();
@@ -12,19 +13,73 @@ export default function DeploymentLogs() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [socket, setSocket] = useState(null);
 
   useEffect(() => {
+    // Initialize socket connection
+    const socketUrl = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:4000';
+    const newSocket = io(socketUrl);
+
+    newSocket.on('connect', () => {
+      console.log('Socket connected:', newSocket.id);
+    });
+
+    // Listen for live deployment logs
+    newSocket.on('deployment:log', (data) => {
+      if (data.deploymentId === deploymentId) {
+        setLogs(prevLogs => [
+          ...prevLogs,
+          {
+            message: data.log,
+            type: data.log.includes('ERROR') ? 'error' : data.log.includes('success') ? 'success' : 'info',
+            timestamp: new Date().toLocaleTimeString(),
+          }
+        ]);
+      }
+    });
+
+    // Listen for deployment status updates
+    newSocket.on('deployment:started', (data) => {
+      if (data.deploymentId === deploymentId) {
+        setDeployment(prev => prev ? { ...prev, status: data.status } : null);
+      }
+    });
+
+    newSocket.on('deployment:completed', (data) => {
+      if (data.deploymentId === deploymentId) {
+        setDeployment(prev => prev ? { 
+          ...prev, 
+          status: data.status,
+          deployedUrl: data.deployedUrl
+        } : null);
+      }
+    });
+
+    newSocket.on('deployment:failed', (data) => {
+      if (data.deploymentId === deploymentId) {
+        setDeployment(prev => prev ? { ...prev, status: data.status } : null);
+        setError(data.error || 'Deployment failed');
+      }
+    });
+
+    newSocket.on('disconnect', () => {
+      console.log('Socket disconnected');
+    });
+
+    setSocket(newSocket);
+
+    // Fetch initial deployment data
     fetchDeployment();
     fetchLogs();
 
-    // Poll for updates every 2 seconds
-    const interval = setInterval(fetchLogs, 2000);
-    return () => clearInterval(interval);
+    return () => {
+      newSocket.disconnect();
+    };
   }, [deploymentId]);
 
   const fetchDeployment = async () => {
     try {
-      const response = await api.get(`/deployments/${deploymentId}`);
+      const response = await deploymentAPI.getById(deploymentId);
       setDeployment(response.data.data);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to fetch deployment');
@@ -33,7 +88,7 @@ export default function DeploymentLogs() {
 
   const fetchLogs = async () => {
     try {
-      const response = await api.get(`/deployments/${deploymentId}/logs`);
+      const response = await deploymentAPI.getLogs(deploymentId);
       const logLines = response.data.data || [];
       
       // Parse log lines into objects
@@ -41,7 +96,7 @@ export default function DeploymentLogs() {
         if (typeof line === 'string') {
           return {
             message: line,
-            type: line.includes('error') ? 'error' : line.includes('success') ? 'success' : 'info',
+            type: line.includes('ERROR') ? 'error' : line.includes('success') ? 'success' : 'info',
             timestamp: new Date().toLocaleTimeString(),
           };
         }
