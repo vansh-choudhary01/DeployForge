@@ -31,8 +31,20 @@ setInterval(async () => {
     }
 }, 2000);
 
+const logsMap = new Map(); // In-memory map to store logs for each deployment
+
+export const getDeploymentLogs = (deploymentId, userId) => {
+    const userSocketId = sockets.get(userId);
+
+    io.to(userSocketId).emit('deployment:previous-logs', {
+        deploymentId: deploymentId,
+        logs: logsMap.get(deploymentId) || [],
+    });
+};
+
 async function runDeployment(deployment, service) {
     const logs = [];
+    logsMap.set(deployment._id.toString(), logs); // Store reference to logs in the map
 
     // Helper function to push logs and emit via socket.io
     const pushLog = (message) => {
@@ -64,11 +76,11 @@ async function runDeployment(deployment, service) {
 
         // Update deployment
         deployment.status = "running";
-        deployment.logs = logs;
         deployment.deployedUrl = service.publicUrl;
 
         pushLog(`[${new Date().toISOString()}] Deployment completed successfully!`);
         pushLog(`Service available at: ${service.publicUrl}`);
+        deployment.logs = logs;
 
         // Emit deployment completed event
         var userSocketId = sockets.get(service.user.toString());
@@ -98,6 +110,8 @@ async function runDeployment(deployment, service) {
     // Save changes
     await service.save();
     await deployment.save();
+
+    logsMap.delete(deployment._id.toString()); // Clean up logs from memory after deployment is done
 }
 
 async function getPort() {
@@ -264,6 +278,8 @@ CMD ["sh","-c","${startCommand}"]`;
 
         await setupSubdomain(subdomain, port, pushLog);
         service.publicUrl = `https://${subdomain}.naaspeeti.xyz`;
+
+        await collectContainerLogs(appName, pushLog);
     } catch (err) {
         throw new Error(`SSH deployment failed: ${err.message}`);
     }
@@ -285,7 +301,7 @@ function executeSSHCommands(commands, logs, pushLog) {
                 }
 
                 let output = '';
-                let error = ''; 
+                let error = '';
 
                 stream.on('data', (data) => {
                     const message = data.toString();
@@ -302,9 +318,9 @@ function executeSSHCommands(commands, logs, pushLog) {
                     //     message.toLowerCase().includes('notice');
 
                     // if (isWarning) {
-                        pushLog(`[${new Date().toISOString()}] WARNING: ${message}`);
+                    pushLog(`[${new Date().toISOString()}] WARNING: ${message}`);
                     // } else {
-                        error += message;
+                    error += message;
                     //     pushLog(`[${new Date().toISOString()}] ERROR: ${message}`);
                     // }
                 });
@@ -433,4 +449,18 @@ server {
     await executeSSHCommands(commands, [], pushLog);
 
     pushLog(`[${new Date().toISOString()}] Subdomain ready: https://${subdomain}.naaspeeti.xyz`);
+}
+
+async function collectContainerLogs(appName, pushLog) {
+    pushLog(`[${new Date().toISOString()}] Collecting logs for ${appName}...`);
+    pushLog(`[${new Date().toISOString()}] Streaming logs in real-time.`);
+    const commands = [`timeout 12 docker logs -f --tail 200 ${appName} || true`]; // Stream logs for 12 seconds to capture startup logs
+
+    await executeSSHCommands(
+        commands,
+        [],
+        pushLog
+    );
+
+    pushLog(`[${new Date().toISOString()}] Log streaming finished`);
 }

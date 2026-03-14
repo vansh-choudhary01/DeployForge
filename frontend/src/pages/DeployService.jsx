@@ -363,6 +363,10 @@ export default function DeployService() {
           <div className="space-y-4 pb-6 border-b border-slate-700">
             <h2 className="text-lg font-semibold text-white">Build & Deploy</h2>
 
+            <div className="text-xs text-slate-400">
+              Commands below will run from: <span className="text-white font-mono">{formData.rootDirectory || '/'}</span>
+            </div>
+
           <div>
             <label className="block text-sm font-medium text-white mb-2">
               Pre-Deploy Command *
@@ -376,23 +380,26 @@ export default function DeployService() {
               placeholder="npm install"
               className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-sm"
             />
-            <p className="text-xs text-slate-400 mt-1">$ {formData.preDeployCommand}</p>
+            <p className="text-xs text-slate-400 mt-1">
+              {formData.rootDirectory || '/'} <span className="text-slate-200">$</span> {formData.preDeployCommand}
+            </p>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-white mb-2">
-                Build Command *
+                Build Command
               </label>
               <input
                 type="text"
                 name="buildCommand"
                 value={formData.buildCommand}
                 onChange={handleInputChange}
-                required
                 placeholder="npm run build"
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-sm"
               />
-              <p className="text-xs text-slate-400 mt-1">$ {formData.buildCommand}</p>
+              <p className="text-xs text-slate-400 mt-1">
+                {formData.rootDirectory || '/'} <span className="text-slate-200">$</span> {formData.buildCommand || '<no build command>'}
+              </p>
             </div>
 
             <div>
@@ -408,7 +415,9 @@ export default function DeployService() {
                 placeholder="npm start"
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-sm"
               />
-              <p className="text-xs text-slate-400 mt-1">$ {formData.startCommand}</p>
+              <p className="text-xs text-slate-400 mt-1">
+                {formData.rootDirectory || '/'} <span className="text-slate-200">$</span> {formData.startCommand}
+              </p>
             </div>
 
             <div>

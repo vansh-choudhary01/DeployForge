@@ -15,6 +15,42 @@ export default function DeploymentLogs() {
   const [error, setError] = useState('');
   const [socket, setSocket] = useState(null);
 
+  const formatLogEntry = (message) => ({
+    message,
+    type: message.includes('ERROR')
+      ? 'error'
+      : message.includes('success')
+      ? 'success'
+      : message.includes('WARNING')
+      ? 'warning'
+      : 'info',
+    timestamp: new Date().toLocaleTimeString(),
+  });
+
+  const appendLog = (entry) => {
+    setLogs((prevLogs) => {
+      const exists = prevLogs.some((l) => l.message === entry.message);
+      if (exists) return prevLogs;
+      return [...prevLogs, entry];
+    });
+  };
+
+  const addLogEntries = (newMessages) => {
+    setLogs((prevLogs) => {
+      const keyCache = new Set(prevLogs.map((l) => l.message));
+      const merged = [...prevLogs];
+      newMessages.forEach((msg) => {
+        const log = typeof msg === 'string' ? formatLogEntry(msg) : msg;
+        const key = log.message;
+        if (!keyCache.has(key)) {
+          keyCache.add(key);
+          merged.push(log);
+        }
+      });
+      return merged;
+    });
+  };
+
   useEffect(() => {
     // Initialize socket connection with credentials so cookies are sent, plus reconnect behavior
     const socketUrl = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:4000';
@@ -29,6 +65,7 @@ export default function DeploymentLogs() {
 
     newSocket.on('connect', () => {
       console.log('Socket connected:', newSocket.id);
+      newSocket.emit('deployment:subscribe', { deploymentId });
     });
 
     newSocket.on('connect_error', (err) => {
@@ -45,19 +82,21 @@ export default function DeploymentLogs() {
 
     newSocket.on('reconnect', (attempt) => {
       console.log(`Socket reconnected after ${attempt} attempts`);
+      newSocket.emit('deployment:subscribe', { deploymentId });
+    });
+
+    // Listen for previous logs sent upon subscription
+    newSocket.on('deployment:previous-logs', (data) => {
+      if (data.deploymentId === deploymentId && Array.isArray(data.logs)) {
+        addLogEntries(data.logs);
+        setLoading(false);
+      }
     });
 
     // Listen for live deployment logs
     newSocket.on('deployment:log', (data) => {
       if (data.deploymentId === deploymentId) {
-        setLogs(prevLogs => [
-          ...prevLogs,
-          {
-            message: data.log,
-            type: data.log.includes('ERROR') ? 'error' : data.log.includes('success') ? 'success' : data.log.includes('WARNING') ? 'warning' : 'info',
-            timestamp: new Date().toLocaleTimeString(),
-          }
-        ]);
+        appendLog(formatLogEntry(data.log));
       }
     });
 
@@ -71,8 +110,8 @@ export default function DeploymentLogs() {
     newSocket.on('deployment:completed', (data) => {
       if (data.deploymentId === deploymentId) {
         setDeployment(prev => prev ? { 
-          ...prev, 
-          status: data.status,
+                ...prev,
+                status: data.status,
           deployedUrl: data.deployedUrl
         } : null);
       }
@@ -80,7 +119,7 @@ export default function DeploymentLogs() {
 
     newSocket.on('deployment:failed', (data) => {
       if (data.deploymentId === deploymentId) {
-        setDeployment(prev => prev ? { ...prev, status: data.status } : null);
+        setDeployment((prev) => (prev ? { ...prev, status: data.status } : null));
         setError(data.error || 'Deployment failed');
       }
     });
@@ -126,7 +165,7 @@ export default function DeploymentLogs() {
         return line;
       });
 
-      setLogs(parsedLogs);
+      addLogEntries(parsedLogs);
       setLoading(false);
     } catch (err) {
       console.error('Failed to fetch logs:', err);

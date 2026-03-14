@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
-import './workers/deploymentWorker.js';
+import { getDeploymentLogs } from './workers/deploymentWorker.js';
 dotenv.config();
 
 const app = express();
@@ -76,9 +76,20 @@ io.use((socket, next) => {
 // Socket.io connection handling
 io.on('connection', (socket) => {
     console.log('New client connected:', socket.id);
-    
+
+    socket.on('deployment:subscribe', async (payload) => {
+        const deploymentId = payload?.deploymentId;
+
+        if (deploymentId) {
+            getDeploymentLogs(deploymentId, socket.userId);
+        }
+    });
+
     socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
+        if (socket.userId) {
+            sockets.delete(socket.userId);
+        }
     });
 });
 
