@@ -2,7 +2,6 @@ import Deployment from "../models/Deployment.js";
 import Service from "../models/Service.js";
 import { Client } from 'ssh2';
 import fs from 'fs';
-import path from 'path';
 import { io } from '../index.js';
 import UsedPort from "../models/UsedPort.js";
 // Start deployment worker - polls every 2 seconds for queued deployments
@@ -26,19 +25,21 @@ setInterval(async () => {
             return;
         }
 
-        await runDeployment(deployment, service);
+        const userSocketId = sockets.get(service.user.toString());
+
+        await runDeployment(deployment, service, userSocketId);
     } catch (err) {
         console.error('Worker error:', err);
     }
 }, 2000);
 
-async function runDeployment(deployment, service) {
+async function runDeployment(deployment, service, userSocketId) {
     const logs = [];
 
     // Helper function to push logs and emit via socket.io
     const pushLog = (message) => {
         logs.push(message);
-        io.emit('deployment:log', {
+        io.to(userSocketId).emit('deployment:log', {
             deploymentId: deployment._id.toString(),
             log: message
         });
@@ -50,7 +51,7 @@ async function runDeployment(deployment, service) {
         pushLog(`Branch: ${service.gitBranch}`);
 
         // Emit deployment started event
-        io.emit('deployment:started', {
+        io.to(userSocketId).emit('deployment:started', {
             deploymentId: deployment._id.toString(),
             status: 'building'
         });
@@ -71,7 +72,7 @@ async function runDeployment(deployment, service) {
         pushLog(`Service available at: ${service.publicUrl}`);
 
         // Emit deployment completed event
-        io.emit('deployment:completed', {
+        io.to(userSocketId).emit('deployment:completed', {
             deploymentId: deployment._id.toString(),
             status: 'running',
             deployedUrl: service.publicUrl
@@ -86,7 +87,7 @@ async function runDeployment(deployment, service) {
         deployment.logs = logs;
 
         // Emit deployment failed event
-        io.emit('deployment:failed', {
+        io.to(userSocketId).emit('deployment:failed', {
             deploymentId: deployment._id.toString(),
             status: 'failed',
             error: err.message
@@ -113,7 +114,7 @@ async function getPort() {
 
 async function deployViaSSH(deployment, service, logs, pushLog) {
     const appName = `app-${deployment._id}`;
-    const port = deployment.port || await getPort(); // Fallback port if not set
+    const port = await getPort();
     const { gitRepositoryUrl, gitBranch, startCommand, environmentVariables } = service;
 
     pushLog(`[${new Date().toISOString()}] Initializing deployment...`);
@@ -133,7 +134,7 @@ async function deployViaSSH(deployment, service, logs, pushLog) {
         // Build commands to execute on EC2
         const commands = [
             // Ensure base directory exists
-            `mkdir -p ~/apps`,
+            `mkdir -p ~/apps`, // create base directory if it doesn't exist
             `cd ~/apps`,
 
             // Handle redeployment safely - stop and remove existing container
@@ -158,7 +159,7 @@ async function deployViaSSH(deployment, service, logs, pushLog) {
 
         pushLog(`[${new Date().toISOString()}] Repository cloning and setup commands prepared`);
 
-        // Execute pre-deploy command if exists
+        // Execute pre-deploy command if exists like db migrations (Database schema update) or installing dependencies before build
         if (service.preDeployCommand) {
             pushLog(`[${new Date().toISOString()}] Pre-deploy command: ${service.preDeployCommand}`);
             commands.push(`${service.preDeployCommand}`);
@@ -177,7 +178,7 @@ async function deployViaSSH(deployment, service, logs, pushLog) {
                 .map(ev => `${ev.key}=${ev.value}`)
                 .join('\n');
 
-            commands.push(`cat > .env << 'ENVFILE'\n${envContent}\nENVFILE`);
+            commands.push(`cat > .env << 'ENVFILE'\n${envContent}\nENVFILE`); // create .env file with environment variables
         }
 
         // Dynamically generate Dockerfile
@@ -196,6 +197,7 @@ CMD ["sh","-c","${startCommand}"]`;
 
         // Build Docker image without cache
         pushLog(`[${new Date().toISOString()}] Building Docker image: ${appName}`);
+        // commands.push(`docker build --no-cache -t ${appName} .`);
         commands.push(`docker build -t ${appName} .`);
 
         // Start the container
@@ -235,6 +237,8 @@ CMD ["sh","-c","${startCommand}"]`;
 
             await executeSSHCommands(restartCommands, logs, pushLog);
 
+            // Ensure the restarted container is running before proceeding.
+            await ensureDockerContainerRunning(appName, pushLog);
         }
 
         // Store deployment metadata
@@ -322,7 +326,32 @@ function executeSSHCommands(commands, logs, pushLog) {
     });
 }
 
+async function ensureDockerContainerRunning(containerName, pushLog) {
+    for (let attempt = 1; attempt <= 5; attempt++) {
+        try {
+            const stateCommands = [`docker inspect -f '{{.State.Running}}' ${containerName}`];
+            const stateResult = await executeSSHCommands(stateCommands, [], () => {});
+            const state = (stateResult.output || '').trim();
+            pushLog(`[${new Date().toISOString()}] Container ${containerName} state: ${state}`);
+
+            if (state === 'true') {
+                return true;
+            }
+
+            pushLog(`[${new Date().toISOString()}] Container ${containerName} is not running (state=${state}), retrying in 2 seconds (${attempt}/5)`);
+        } catch (err) {
+            pushLog(`[${new Date().toISOString()}] Error checking container state for ${containerName}: ${err.message}. Retry ${attempt}/5`);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    throw new Error(`Container ${containerName} is not running after 5 retries`);
+}
+
 async function detectContainerPort(containerName, pushLog) {
+    await ensureDockerContainerRunning(containerName, pushLog);
+
     for (let i = 0; i < 5; i++) {
         try {
             const detectCommands = [`docker exec ${containerName} ss -tulpn`];
@@ -332,7 +361,7 @@ async function detectContainerPort(containerName, pushLog) {
             for (const line of lines) {
                 if (line.includes('node')) {
                     // const match = line.match(/0\.0\.0\.0:(\d+)/);
-                    const match = line.match(/:(\d+)/);
+                    const match = line.match(/:(\d{2,5})/);
                     if (match) {
                         const port = parseInt(match[1]);
                         pushLog(`[${new Date().toISOString()}] Detected listening port: ${port}`);
@@ -341,7 +370,7 @@ async function detectContainerPort(containerName, pushLog) {
                 }
             }
         } catch (err) {
-            // ignore errors during detection
+            pushLog(`[${new Date().toISOString()}] Error while detecting container port: ${err.message}`);
         }
         pushLog(`[${new Date().toISOString()}] Port not detected yet, retrying in 2 seconds...`);
         await new Promise(resolve => setTimeout(resolve, 2000));

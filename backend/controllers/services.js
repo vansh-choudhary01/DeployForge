@@ -109,6 +109,7 @@ export async function deployService(req, res) {
 
     const service = await Service.create({
       project: projectId,
+      user: userId,
       name: repo.split('/').pop().split('.git').shift(),
       gitRepositoryUrl: repo,
       gitBranch: branch,

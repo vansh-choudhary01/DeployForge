@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import jwt from 'jsonwebtoken';
 import './workers/deploymentWorker.js';
 dotenv.config();
 
@@ -45,6 +46,32 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api', allRoutes);
+
+// store a map in memory for (userId: socketId)
+export const sockets = new Map();
+io.use((socket, next) => {
+    try {
+        const cookies = socket.handshake.headers.cookie || '';
+        const tokenCookie = cookies.split('; ').find(c => c.startsWith('token='));
+        const token = tokenCookie ? tokenCookie.split('=')[1] : null;
+
+        if (!token) {
+            return next(new Error('Authentication failed: missing token'));
+        }
+
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        if (!decoded || !decoded.userId) {
+            return next(new Error('Authentication failed: invalid token'));
+        }
+
+        socket.userId = decoded.userId;
+        sockets.set(decoded.userId, socket.id);
+        next();
+    } catch (err) {
+        console.error('Socket auth error', err.message);
+        next(new Error('Authentication failed: invalid token'));
+    }
+});
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
