@@ -16,12 +16,35 @@ export default function DeploymentLogs() {
   const [socket, setSocket] = useState(null);
 
   useEffect(() => {
-    // Initialize socket connection
+    // Initialize socket connection with credentials so cookies are sent, plus reconnect behavior
     const socketUrl = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:4000';
-    const newSocket = io(socketUrl);
+    const newSocket = io(socketUrl, {
+      withCredentials: true,
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
+      timeout: 20000,
+    });
 
     newSocket.on('connect', () => {
       console.log('Socket connected:', newSocket.id);
+    });
+
+    newSocket.on('connect_error', (err) => {
+      console.error('Socket connect error:', err.message || err);
+    });
+
+    newSocket.on('reconnect_attempt', (attempt) => {
+      console.log(`Socket reconnect attempt ${attempt}`);
+    });
+
+    newSocket.on('reconnect_failed', () => {
+      console.error('Socket reconnection failed after max attempts');
+    });
+
+    newSocket.on('reconnect', (attempt) => {
+      console.log(`Socket reconnected after ${attempt} attempts`);
     });
 
     // Listen for live deployment logs
@@ -96,7 +119,7 @@ export default function DeploymentLogs() {
         if (typeof line === 'string') {
           return {
             message: line,
-            type: line.includes('ERROR') ? 'error' : line.includes('success') ? 'success' : 'info',
+            type: line.includes('ERROR') ? 'error' : line.includes('success') ? 'success' : line.includes('WARNING') ? 'warning' : 'info',
             timestamp: new Date().toLocaleTimeString(),
           };
         }

@@ -1,6 +1,9 @@
 import mongoose from 'mongoose';
 
 const portSchema = new mongoose.Schema({
+    subdomain: {
+        type: String,
+    },
     port: {
         type: Number,
         required: true,

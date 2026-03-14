@@ -2,8 +2,8 @@ import Deployment from "../models/Deployment.js";
 import Service from "../models/Service.js";
 import { Client } from 'ssh2';
 import fs from 'fs';
-import { io } from '../index.js';
-import UsedPort from "../models/UsedPort.js";
+import { io, sockets } from '../index.js';
+import UsedPortAndSubDomain from "../models/UsedPort.js";
 // Start deployment worker - polls every 2 seconds for queued deployments
 setInterval(async () => {
     try {
@@ -25,20 +25,19 @@ setInterval(async () => {
             return;
         }
 
-        const userSocketId = sockets.get(service.user.toString());
-
-        await runDeployment(deployment, service, userSocketId);
+        await runDeployment(deployment, service);
     } catch (err) {
         console.error('Worker error:', err);
     }
 }, 2000);
 
-async function runDeployment(deployment, service, userSocketId) {
+async function runDeployment(deployment, service) {
     const logs = [];
 
     // Helper function to push logs and emit via socket.io
     const pushLog = (message) => {
         logs.push(message);
+        let userSocketId = sockets.get(service.user.toString());
         io.to(userSocketId).emit('deployment:log', {
             deploymentId: deployment._id.toString(),
             log: message
@@ -51,6 +50,7 @@ async function runDeployment(deployment, service, userSocketId) {
         pushLog(`Branch: ${service.gitBranch}`);
 
         // Emit deployment started event
+        var userSocketId = sockets.get(service.user.toString());
         io.to(userSocketId).emit('deployment:started', {
             deploymentId: deployment._id.toString(),
             status: 'building'
@@ -61,7 +61,6 @@ async function runDeployment(deployment, service, userSocketId) {
 
         // Update service status
         service.status = "running";
-        service.publicUrl = `http://${process.env.EC2_HOST}:${deployment.port}`;
 
         // Update deployment
         deployment.status = "running";
@@ -72,6 +71,7 @@ async function runDeployment(deployment, service, userSocketId) {
         pushLog(`Service available at: ${service.publicUrl}`);
 
         // Emit deployment completed event
+        var userSocketId = sockets.get(service.user.toString());
         io.to(userSocketId).emit('deployment:completed', {
             deploymentId: deployment._id.toString(),
             status: 'running',
@@ -87,6 +87,7 @@ async function runDeployment(deployment, service, userSocketId) {
         deployment.logs = logs;
 
         // Emit deployment failed event
+        var userSocketId = sockets.get(service.user.toString());
         io.to(userSocketId).emit('deployment:failed', {
             deploymentId: deployment._id.toString(),
             status: 'failed',
@@ -101,15 +102,26 @@ async function runDeployment(deployment, service, userSocketId) {
 
 async function getPort() {
     let port = Math.floor(Math.random() * (65535 - 1024) + 1024); // Random port between 1024 and 65535
-    let existingPort = await UsedPort.findOne({ port });
+    let existingPort = await UsedPortAndSubDomain.findOne({ port });
 
     while (existingPort) {
         console.log('Port already in use, trying another...', existingPort);
         port = Math.floor(Math.random() * (65535 - 1024) + 1024); // Random port between 1024 and 65535
-        existingPort = await UsedPort.findOne({ port });
+        existingPort = await UsedPortAndSubDomain.findOne({ port });
     }
 
     return port;
+}
+
+async function getSubdomain(serviceName) {
+    const base = serviceName.toLowerCase().replace(/_/g, '-');
+    let subdomain = base;
+
+    while (await UsedPortAndSubDomain.findOne({ subdomain })) {
+        subdomain = `${base}-${Math.random().toString(36).replace(/[^a-z]/g, '').slice(0, 4)}`;
+    }
+
+    return subdomain;
 }
 
 async function deployViaSSH(deployment, service, logs, pushLog) {
@@ -245,8 +257,13 @@ CMD ["sh","-c","${startCommand}"]`;
         deployment.dockerImage = appName;
         deployment.port = port;
 
+        const subdomain = await getSubdomain(service.name);
+
         // Store port mapping in Port collection for tracking
-        await UsedPort.create({ port, deployment: deployment._id });
+        await UsedPortAndSubDomain.create({ subdomain, port, deployment: deployment._id });
+
+        await setupSubdomain(subdomain, port, pushLog);
+        service.publicUrl = `https://${subdomain}.naaspeeti.xyz`;
     } catch (err) {
         throw new Error(`SSH deployment failed: ${err.message}`);
     }
@@ -376,4 +393,44 @@ async function detectContainerPort(containerName, pushLog) {
         await new Promise(resolve => setTimeout(resolve, 2000));
     }
     throw new Error('Unable to detect listening port after 5 retries');
+}
+
+async function setupSubdomain(subdomain, port, pushLog) {
+    const nginxConfig = `
+server {
+    listen 80;
+    server_name ${subdomain}.naaspeeti.xyz;
+
+    location / {
+        proxy_pass http://localhost:${port};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_cache_bypass $http_upgrade;
+    }
+}`;
+
+    const commands = [
+        // Remove old config if redeploying
+        `sudo rm -f /etc/nginx/sites-enabled/${subdomain}`,
+        `sudo rm -f /etc/nginx/sites-available/${subdomain}`,
+
+        // Write new nginx config
+        `echo '${nginxConfig}' | sudo tee /etc/nginx/sites-available/${subdomain}`,
+
+        // Enable it
+        `sudo ln -sf /etc/nginx/sites-available/${subdomain} /etc/nginx/sites-enabled/${subdomain}`,
+
+        // Test and reload nginx
+        `sudo nginx -t && sudo nginx -s reload`,
+
+        // Issue SSL cert for this subdomain
+        `sudo certbot --nginx -d ${subdomain}.naaspeeti.xyz --non-interactive --agree-tos -m your@email.com`
+    ];
+
+    await executeSSHCommands(commands, [], pushLog);
+
+    pushLog(`[${new Date().toISOString()}] Subdomain ready: https://${subdomain}.naaspeeti.xyz`);
 }
