@@ -43,6 +43,7 @@ export const getDeploymentLogs = (deploymentId, userId) => {
 };
 
 async function runDeployment(deployment, service) {
+    const startTime = Date.now();
     const logs = [];
     logsMap.set(deployment._id.toString(), logs); // Store reference to logs in the map
 
@@ -106,6 +107,8 @@ async function runDeployment(deployment, service) {
             error: err.message
         });
     }
+
+    deployment.duration = Math.round((Date.now() - startTime) / 1000); // Calculate duration in seconds
 
     // Save changes
     await service.save();

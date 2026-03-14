@@ -52,4 +52,12 @@ export const deploymentAPI = {
   getLogs: (id) => api.get(`/deployments/${id}/logs`),
 };
 
+export const userAPI = {
+  register: (userData) => api.post('/users/register', userData),
+  login: (userData) => api.post('/users/login', userData),
+  verify: (otp) => api.post('/users/verify', { otp }),
+  getCurrent: () => api.get('/users/me'),
+  logout: () => api.post('/users/logout'),
+};
+
 export default api;

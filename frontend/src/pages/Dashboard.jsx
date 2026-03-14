@@ -6,10 +6,11 @@ import api from '../utils/api';
 export default function Dashboard() {
   const navigate = useNavigate();
   const [stats, setStats] = useState({
+    totalProjects: 0,
     totalServices: 0,
-    activeDeployments: 0,
-    totalDeployments: 0,
+    activeServices: 0,
   });
+  const [recentServices, setRecentServices] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -18,20 +19,29 @@ export default function Dashboard() {
 
   const fetchStats = async () => {
     try {
-      const [servicesRes] = await Promise.all([
+      const [projectsRes, servicesRes] = await Promise.all([
+        api.get('/projects'),
         api.get('/services'),
       ]);
 
-      const services = servicesRes.data.data || [];
-      const activeDeployments = services.filter(
+      const projects = projectsRes.data.projects || [];
+      const services = servicesRes.data.services || [];
+      const activeServices = services.filter(
         (s) => s.status === 'deploying' || s.status === 'running'
       ).length;
 
       setStats({
+        totalProjects: projects.length,
         totalServices: services.length,
-        activeDeployments,
-        totalDeployments: services.length,
+        activeServices,
       });
+
+      setRecentServices(
+        services
+          .slice()
+          .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+          .slice(0, 5)
+      );
     } catch (error) {
       console.error('Failed to fetch stats:', error);
     } finally {
@@ -41,18 +51,18 @@ export default function Dashboard() {
 
   const statCards = [
     {
-      title: 'Total Services',
-      value: stats.totalServices,
+      title: 'Total Projects',
+      value: stats.totalProjects,
       color: 'from-blue-500 to-blue-600',
     },
     {
-      title: 'Active Deployments',
-      value: stats.activeDeployments,
+      title: 'Total Services',
+      value: stats.totalServices,
       color: 'from-green-500 to-green-600',
     },
     {
-      title: 'Total Deployments',
-      value: stats.totalDeployments,
+      title: 'Active Services',
+      value: stats.activeServices,
       color: 'from-purple-500 to-purple-600',
     },
   ];
@@ -79,6 +89,37 @@ export default function Dashboard() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Recent Activity */}
+      <div className="bg-slate-800 border border-slate-700 rounded-lg p-8">
+        <h2 className="text-xl font-semibold text-white mb-6">Recent Services</h2>
+
+        {loading ? (
+          <p className="text-slate-400">Loading...</p>
+        ) : recentServices.length === 0 ? (
+          <p className="text-slate-400">No services yet. Deploy one to get started.</p>
+        ) : (
+          <div className="space-y-3">
+            {recentServices.map((service) => (
+              <div
+                key={service._id}
+                className="bg-slate-700 border border-slate-600 rounded-lg p-3 flex items-center justify-between"
+              >
+                <div>
+                  <p className="text-white font-semibold">{service.name}</p>
+                  <p className="text-xs text-slate-400">{service.gitBranch || 'main'} · {service.status || 'pending'}</p>
+                </div>
+                <button
+                  onClick={() => navigate(`/services/${service._id}`)}
+                  className="text-blue-400 hover:text-blue-200 text-xs"
+                >
+                  Details
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Quick Actions */}

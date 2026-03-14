@@ -187,7 +187,7 @@ export default function DeploymentLogs() {
       {/* Deployment Info */}
       {deployment && (
         <div className="bg-slate-800 border border-slate-700 rounded-lg p-8">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 gap-4">
             <div>
               <h1 className="text-3xl font-bold text-white">Deployment Logs</h1>
               <p className="text-slate-400 mt-1">
@@ -196,6 +196,30 @@ export default function DeploymentLogs() {
             </div>
             <StatusBadge status={deployment.status} />
           </div>
+
+          {deployment.service && (
+            <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-slate-400">Service</p>
+                <p className="text-white font-medium">{deployment.service.name}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-400">Repo</p>
+                <p className="text-white font-mono break-all">{deployment.service.gitRepositoryUrl}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-400">Public URL</p>
+                <a
+                  href={deployment.service.publicUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 hover:text-blue-300 break-all"
+                >
+                  {deployment.service.publicUrl}
+                </a>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="bg-red-900 border border-red-700 rounded-lg p-4 text-red-200">
@@ -218,16 +242,16 @@ export default function DeploymentLogs() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <p className="text-sm text-slate-400 mb-1">Commit</p>
-              <p className="text-white font-mono break-all">{deployment.commitHash}</p>
+              <p className="text-white font-mono break-all">{deployment.commitHash || 'N/A'}</p>
             </div>
             <div>
               <p className="text-sm text-slate-400 mb-1">Branch</p>
-              <p className="text-white">{deployment.branch || 'main'}</p>
+              <p className="text-white">{deployment.branch || deployment.service?.gitBranch || 'main'}</p>
             </div>
             <div>
               <p className="text-sm text-slate-400 mb-1">Status</p>
               <div className="mt-2">
-                <StatusBadge status={deployment.status} />
+                <StatusBadge status={deployment.status || 'pending'} />
               </div>
             </div>
             <div>
@@ -236,6 +260,18 @@ export default function DeploymentLogs() {
                 {deployment.duration ? `${deployment.duration}s` : 'Still running...'}
               </p>
             </div>
+            {deployment.service && (
+              <>
+                <div>
+                  <p className="text-sm text-slate-400 mb-1">Service Start</p>
+                  <p className="text-white font-mono break-all">{deployment.service.startCommand || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-400 mb-1">Health Check</p>
+                  <p className="text-white">{deployment.service.healthCheckPath || 'N/A'}</p>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

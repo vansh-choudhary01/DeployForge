@@ -65,11 +65,11 @@ export async function getServices(req, res) {
     const userId = req.userId;
 
     const projects = await Project.find({ user: userId });
-    if (!projects) {
+    if (!projects || projects.length === 0) {
       return res.status(200).json({ message: 'No services found', services: [] });
     }
 
-    const services = await Service.find({ project: { $in: projects.map(p => p._id) } });
+    const services = await Service.find({ project: { $in: projects.map(p => p._id) } }).populate('project');
 
     return res.json({
       message: 'Services found',
@@ -123,6 +123,8 @@ export async function deployService(req, res) {
       logs: [],
     });
 
+    await Project.findByIdAndUpdate(projectId, { $addToSet: { services: service._id } });
+
     const deployment = await Deployment.create({
       service: service._id,
       status: "queued",
@@ -152,12 +154,12 @@ export async function getService(req, res) {
     const { id } = req.params;
     const userId = req.userId;
 
-    const service = await Service.findById(id);
+    const service = await Service.findById(id).populate('project');
     if (!service) {
       return res.status(404).json({ message: 'Service not found' });
     }
 
-    const project = await Project.findById(service.project);
+    const project = service.project;
     if (!project || project.user.toString() !== userId) {
       return res.status(403).json({ message: 'Unauthorized' });
     }
@@ -225,6 +227,11 @@ export async function deleteService(req, res) {
     const project = await Project.findById(service.project);
     if (!project || project.user.toString() !== userId) {
       return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    if (project) {
+      project.services = project.services.filter(sId => sId.toString() !== id);
+      await project.save();
     }
 
     await Deployment.deleteMany({ service: id });

@@ -24,7 +24,20 @@ export async function getDeployment(req, res) {
 
     return res.json({
       message: 'Deployment found',
-      data: deployment
+      data: {
+        ...deployment.toObject(),
+        service: {
+          _id: service._id,
+          name: service.name,
+          gitRepositoryUrl: service.gitRepositoryUrl,
+          gitBranch: service.gitBranch,
+          status: service.status,
+          publicUrl: service.publicUrl,
+          rootDirectory: service.rootDirectory,
+          healthCheckPath: service.healthCheckPath,
+          port: service.port,
+        }
+      }
     });
   } catch (err) {
     console.log(err);

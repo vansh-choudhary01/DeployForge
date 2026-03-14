@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { HiArrowLeft, HiOutlineTrash, HiArrowPathRoundedSquare } from 'react-icons/hi2';
 import StatusBadge from '../components/StatusBadge';
-import api from '../utils/api';
+import api, { serviceAPI } from '../utils/api';
 
 export default function ServiceDetails() {
   const { id } = useParams();
@@ -12,6 +12,9 @@ export default function ServiceDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [redeploying, setRedeploying] = useState(false);
+  const [envKey, setEnvKey] = useState('');
+  const [envValue, setEnvValue] = useState('');
+  const [envStatus, setEnvStatus] = useState('');
 
   useEffect(() => {
     fetchService();
@@ -56,6 +59,35 @@ export default function ServiceDetails() {
     }
   };
 
+  const handleAddOrUpdateEnv = async (e) => {
+    e.preventDefault();
+    if (!envKey.trim() || !envValue.trim()) {
+      setEnvStatus('Key and value are required');
+      return;
+    }
+
+    try {
+      await serviceAPI.setEnv(id, { key: envKey.trim(), value: envValue.trim() });
+      setEnvStatus(`Saved ${envKey.trim()}`);
+      setEnvKey('');
+      setEnvValue('');
+      await fetchService();
+    } catch (err) {
+      setEnvStatus(err.response?.data?.message || 'Failed to save env');
+    }
+  };
+
+  const handleDeleteEnv = async (key) => {
+    if (!window.confirm(`Delete environment variable ${key}?`)) return;
+    try {
+      await serviceAPI.deleteEnv(id, key);
+      setEnvStatus(`Deleted ${key}`);
+      await fetchService();
+    } catch (err) {
+      setEnvStatus(err.response?.data?.message || 'Failed to delete env');
+    }
+  };
+
   if (loading) {
     return (
       <div className="animate-pulse space-y-8">
@@ -95,7 +127,15 @@ export default function ServiceDetails() {
         <div className="flex items-start justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-white">{service.name}</h1>
-            <p className="text-slate-400 mt-2">{service.repo}</p>
+            <p className="text-slate-400 mt-2">{service.gitRepositoryUrl}</p>
+            {service.project?.name && (
+              <button
+                onClick={() => navigate('/projects')}
+                className="mt-2 text-blue-400 hover:text-blue-300 text-sm"
+              >
+                Project: {service.project.name} (ID: {service.project.projectId})
+              </button>
+            )}
           </div>
           <StatusBadge status={service.status || 'idle'} />
         </div>
@@ -109,7 +149,7 @@ export default function ServiceDetails() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div>
             <p className="text-sm text-slate-400 mb-1">Branch</p>
-            <p className="text-white font-mono">{service.branch || 'main'}</p>
+            <p className="text-white font-mono">{service.gitBranch || 'main'}</p>
           </div>
           <div>
             <p className="text-sm text-slate-400 mb-1">Build Command</p>
@@ -119,16 +159,36 @@ export default function ServiceDetails() {
             <p className="text-sm text-slate-400 mb-1">Start Command</p>
             <p className="text-white font-mono text-sm">{service.startCommand || 'npm start'}</p>
           </div>
-          {service.url && (
+          <div>
+            <p className="text-sm text-slate-400 mb-1">Root Directory</p>
+            <p className="text-white font-mono text-sm">{service.rootDirectory || '/'}</p>
+          </div>
+          <div>
+            <p className="text-sm text-slate-400 mb-1">Healthcheck Path</p>
+            <p className="text-white font-mono text-sm">{service.healthCheckPath || '/'}</p>
+          </div>
+          <div>
+            <p className="text-sm text-slate-400 mb-1">Port</p>
+            <p className="text-white font-mono text-sm">{service.port ?? 'N/A'}</p>
+          </div>
+          <div>
+            <p className="text-sm text-slate-400 mb-1">Region</p>
+            <p className="text-white font-mono text-sm">{service.region || 'us-east-1'}</p>
+          </div>
+          <div>
+            <p className="text-sm text-slate-400 mb-1">Instance</p>
+            <p className="text-white font-mono text-sm">{service.instanceType?.type || 'free'} - {service.instanceType?.cpus || 0.1} CPUs / {service.instanceType?.memory || 512}{service.instanceType?.memoryType || 'MB'}</p>
+          </div>
+          {service.publicUrl && (
             <div>
-              <p className="text-sm text-slate-400 mb-1">URL</p>
+              <p className="text-sm text-slate-400 mb-1">Public URL</p>
               <a
-                href={service.url}
+                href={service.publicUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-400 hover:text-blue-300 break-all"
               >
-                {service.url}
+                {service.publicUrl}
               </a>
             </div>
           )}
@@ -159,6 +219,72 @@ export default function ServiceDetails() {
             Delete
           </button>
         </div>
+      </div>
+
+      {/* Environment Variables */}
+      <div className="bg-slate-800 border border-slate-700 rounded-lg p-8">
+        <h2 className="text-xl font-semibold text-white mb-6">Environment Variables</h2>
+
+        <form onSubmit={handleAddOrUpdateEnv} className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <input
+            type="text"
+            placeholder="Key"
+            value={envKey}
+            onChange={(e) => setEnvKey(e.target.value)}
+            className="px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none"
+          />
+          <input
+            type="text"
+            placeholder="Value"
+            value={envValue}
+            onChange={(e) => setEnvValue(e.target.value)}
+            className="px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none"
+          />
+          <button
+            type="submit"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
+          >
+            Add / Update
+          </button>
+        </form>
+
+        {envStatus && (
+          <p className="text-sm text-slate-300 mb-4">{envStatus}</p>
+        )}
+
+        {service.environmentVariables && service.environmentVariables.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {service.environmentVariables.map((env, idx) => (
+              <div key={idx} className="bg-slate-900 border border-slate-700 rounded-lg p-3 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs text-slate-400">{env.key}</p>
+                  <p className="text-white text-sm font-mono break-all">{env.value}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEnvKey(env.key);
+                      setEnvValue(env.value);
+                    }}
+                    className="text-xs bg-yellow-600 text-white px-2 py-1 rounded hover:bg-yellow-500"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteEnv(env.key)}
+                    className="text-xs bg-red-600 text-white px-2 py-1 rounded hover:bg-red-500"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-slate-400">No environment variables yet. Add one above.</p>
+        )}
       </div>
 
       {/* Deployment History */}

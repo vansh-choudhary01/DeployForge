@@ -26,7 +26,9 @@ const deploymentSchema = new mongoose.Schema({
 
   port: Number,
 
-  deployedUrl: String
+  deployedUrl: String,
+
+  duration: Number, // in seconds
 
 }, { timestamps: true });
 

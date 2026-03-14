@@ -144,7 +144,12 @@ export default function Services() {
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
                   <h3 className="text-lg font-semibold text-white">{service.name}</h3>
-                  <p className="text-sm text-slate-400 mt-1">{service.gitBranch}</p>
+                  <p className="text-sm text-slate-400 mt-1">{service.gitBranch || 'main'}</p>
+                  {service.project?.name && (
+                    <p className="text-xs text-blue-400 hover:text-blue-300 cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/projects?expand=${service.project._id}`); }}>
+                      Project: {service.project.name}
+                    </p>
+                  )}
                 </div>
               </div>
 

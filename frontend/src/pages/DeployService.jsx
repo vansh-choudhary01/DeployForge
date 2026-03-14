@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { HiArrowLeft, HiPlus, HiOutlineTrash, HiCheck, HiXMark } from 'react-icons/hi2';
 import { serviceAPI, projectAPI } from '../utils/api.js';
 
@@ -8,6 +8,7 @@ const GITHUB_URL_REGEX = /^https:\/\/github\.com\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+
 
 export default function DeployService() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(false);
@@ -29,7 +30,13 @@ export default function DeployService() {
 
   useEffect(() => {
     fetchProjects();
-  }, []);
+
+    const query = new URLSearchParams(location.search);
+    const projectIdFromQuery = query.get('projectId');
+    if (projectIdFromQuery && formData.projectId !== projectIdFromQuery) {
+      setFormData((prev) => ({ ...prev, projectId: projectIdFromQuery }));
+    }
+  }, [location.search]);
 
   const fetchProjects = async () => {
     try {
