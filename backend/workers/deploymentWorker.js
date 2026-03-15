@@ -4,8 +4,14 @@ import { Client } from 'ssh2';
 import fs from 'fs';
 import { io, sockets } from '../index.js';
 import UsedPortAndSubDomain from "../models/UsedPort.js";
+
 // Start deployment worker - polls every 2 seconds for queued deployments
+let activeDeployments = 0;
+const MAX_CONCURRENT_DEPLOYMENTS = 2; // tune to your EC2 capacity
+const DEPLOYMENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes timeout for deployments
+
 setInterval(async () => {
+    if (activeDeployments >= MAX_CONCURRENT_DEPLOYMENTS) return;
     try {
         const deployment = await Deployment.findOneAndUpdate(
             { status: "queued" },
@@ -25,7 +31,10 @@ setInterval(async () => {
             return;
         }
 
-        await runDeployment(deployment, service);
+        activeDeployments++;
+        runDeployment(deployment, service).finally(() => {
+            activeDeployments--;
+        }).catch(err => console.error('Unhandled deployment error:', err));
     } catch (err) {
         console.error('Worker error:', err);
     }
@@ -33,8 +42,15 @@ setInterval(async () => {
 
 const logsMap = new Map(); // In-memory map to store logs for each deployment
 
-export const getDeploymentLogs = (deploymentId, userId) => {
+export const getDeploymentLogs = async (deploymentId, userId) => {
     const userSocketId = sockets.get(userId);
+
+    // check if the user is the owner of the deployment
+    const deployment = await Deployment.findById(deploymentId);
+    const service = await Service.findById(deployment.service);
+    if (service.user.toString() !== userId) {
+        return;
+    }
 
     io.to(userSocketId).emit('deployment:previous-logs', {
         deploymentId: deploymentId,
@@ -51,10 +67,20 @@ async function runDeployment(deployment, service) {
     const pushLog = (message) => {
         logs.push(message);
         let userSocketId = sockets.get(service.user.toString());
-        io.to(userSocketId).emit('deployment:log', {
-            deploymentId: deployment._id.toString(),
-            log: message
-        });
+        if (userSocketId) {
+            io.to(userSocketId).emit('deployment:log', {
+                deploymentId: deployment._id.toString(),
+                log: message
+            });
+        }
+    };
+
+    // AFTER — extract a helper, call it once per emit
+    const emitToUser = (event, data) => {
+        const socketId = sockets.get(service.user.toString());
+        if (socketId) {
+            io.to(socketId).emit(event, data);
+        }
     };
 
     try {
@@ -63,14 +89,24 @@ async function runDeployment(deployment, service) {
         pushLog(`Branch: ${service.gitBranch}`);
 
         // Emit deployment started event
-        var userSocketId = sockets.get(service.user.toString());
-        io.to(userSocketId).emit('deployment:started', {
+        emitToUser('deployment:started', {
             deploymentId: deployment._id.toString(),
             status: 'building'
         });
 
-        // Deploy using SSH
-        await deployViaSSH(deployment, service, logs, pushLog);
+        let timeoutHandle;
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutHandle = setTimeout(
+                () => reject(new Error('Deployment timed out after 10 minutes')),
+                DEPLOYMENT_TIMEOUT_MS
+            );
+        });
+
+        try {
+            await Promise.race([deployViaSSH(deployment, service, logs, pushLog), timeoutPromise]);
+        } finally {
+            clearTimeout(timeoutHandle);
+        }
 
         // Update service status
         service.status = "running";
@@ -81,11 +117,9 @@ async function runDeployment(deployment, service) {
 
         pushLog(`[${new Date().toISOString()}] Deployment completed successfully!`);
         pushLog(`Service available at: ${service.publicUrl}`);
-        deployment.logs = logs;
 
         // Emit deployment completed event
-        var userSocketId = sockets.get(service.user.toString());
-        io.to(userSocketId).emit('deployment:completed', {
+        emitToUser('deployment:completed', {
             deploymentId: deployment._id.toString(),
             status: 'running',
             deployedUrl: service.publicUrl
@@ -98,24 +132,22 @@ async function runDeployment(deployment, service) {
         const running = await isContainerRunning(`app-${service._id}`);
         service.status = running ? "running" : "failed";
         deployment.status = "failed";
-        deployment.logs = logs;
 
         // Emit deployment failed event
-        var userSocketId = sockets.get(service.user.toString());
-        io.to(userSocketId).emit('deployment:failed', {
+        emitToUser('deployment:failed', {
             deploymentId: deployment._id.toString(),
             status: 'failed',
             error: err.message
         });
+    } finally {
+        logsMap.delete(deployment._id.toString()); // Clean up logs from memory after deployment is done
     }
 
     deployment.duration = Math.round((Date.now() - startTime) / 1000); // Calculate duration in seconds
-
+    deployment.logs = logs;
     // Save changes
     await service.save();
     await deployment.save();
-
-    logsMap.delete(deployment._id.toString()); // Clean up logs from memory after deployment is done
 }
 
 async function getPort(preferredPort, serviceSubdomain) {
@@ -143,7 +175,9 @@ async function getSubdomain(serviceName) {
     const base = serviceName.toLowerCase().replace(/_/g, '-');
     let subdomain = base;
 
+    let attempts = 0;
     while (await UsedPortAndSubDomain.findOne({ subdomain })) {
+        if (++attempts > 10) throw new Error(`Cannot generate unique subdomain for ${base} after 10 attempts`);
         subdomain = `${base}-${Math.random().toString(36).replace(/[^a-z]/g, '').slice(0, 4)}`;
     }
 
@@ -164,7 +198,7 @@ async function getStableSubdomain(service) {
 
 async function isContainerRunning(containerName) {
     try {
-        const result = await executeSSHCommands([`docker ps -q -f name=^/${containerName}$`], [], () => {});
+        const result = await executeSSHCommands([`docker ps -q -f name=^/${containerName}$`], [], () => { });
         return Boolean(result.output && result.output.trim());
     } catch (err) {
         return false;
@@ -175,15 +209,20 @@ async function pickNewPortForBlueGreen(oldPort, serviceSubdomain) {
     if (!oldPort) {
         return await getPort(null, serviceSubdomain);
     }
-    let port = await getPort(oldPort, serviceSubdomain);
-    if (port === oldPort) {
-        // find alternative port
-        for (let i = 0; i < 5; i++) {
-            port = await getPort(null, serviceSubdomain);
-            if (port !== oldPort) break;
-        }
+
+    // Try incrementing from oldPort upward until we find a free one
+    for (let candidate = oldPort + 1; candidate <= 65535; candidate++) {
+        const inUse = await UsedPortAndSubDomain.findOne({ port: candidate });
+        if (!inUse) return candidate;
     }
-    return port;
+
+    // Fallback: wrap around from 1024 downward
+    for (let candidate = 1024; candidate < oldPort; candidate++) {
+        const inUse = await UsedPortAndSubDomain.findOne({ port: candidate });
+        if (!inUse) return candidate;
+    }
+
+    throw new Error('No available ports found for blue-green deployment');
 }
 
 async function stopAndRemoveContainer(containerName, pushLog) {
@@ -221,7 +260,7 @@ async function deployViaSSH(deployment, service, logs, pushLog) {
 
     // Persist stable mapping attributes on service for future redeploys (after successful deploy we may adjust)
     service.subdomain = subdomain;
-    service.port = oldInstanceRunning ? port : port;
+    service.port = port;
 
     pushLog(`[${new Date().toISOString()}] Initializing deployment...`);
 
@@ -257,7 +296,7 @@ async function deployViaSSH(deployment, service, logs, pushLog) {
         commands.push(`git clone --branch ${gitBranch} ${gitRepositoryUrl} ${targetAppFolder}`);
         commands.push(`cd ${targetAppFolder}`);
 
-        let relativeRootDirectory = '/';
+        let relativeRootDirectory = '.';
         // Navigate to rootDirectory if specified
         if (service.rootDirectory && service.rootDirectory !== '/') {
             const relativeDir = service.rootDirectory.startsWith('/') ? '.' + service.rootDirectory : service.rootDirectory;
@@ -286,7 +325,9 @@ async function deployViaSSH(deployment, service, logs, pushLog) {
                 .map(ev => `${ev.key}=${ev.value}`)
                 .join('\n');
 
-            commands.push(`cat > .env << 'ENVFILE'\n${envContent}\nENVFILE`); // create .env file with environment variables
+            commands.push(`cat > .env << 'ENVFILEEOF'
+${envContent}
+ENVFILEEOF`); // create .env file with environment variables
         }
 
         // Dynamically generate Dockerfile
@@ -301,7 +342,9 @@ EXPOSE 3000
 CMD ["sh","-c","${startCommand}"]`;
 
         pushLog(`[${new Date().toISOString()}] Generating Dockerfile`);
-        commands.push(`cat > Dockerfile << 'DOCKERFILE'\n${dockerfile}\nDOCKERFILE`);
+        commands.push(`cat > Dockerfile << 'DOCKERFILEEOF'
+${dockerfile}
+DOCKERFILEEOF`);
 
         // Build Docker image without cache
         pushLog(`[${new Date().toISOString()}] Building Docker image: ${appName}`);
@@ -351,6 +394,9 @@ CMD ["sh","-c","${startCommand}"]`;
         deployment.dockerImage = appName;
         deployment.port = port;
 
+        await setupSubdomain(subdomain, port, pushLog);
+        service.publicUrl = `https://${subdomain}.naaspeeti.xyz`;
+
         // Maintain stable subdomain mapping across redeploys
         await UsedPortAndSubDomain.findOneAndUpdate(
             { subdomain },
@@ -358,24 +404,25 @@ CMD ["sh","-c","${startCommand}"]`;
             { upsert: true, new: true }
         );
 
-        await setupSubdomain(subdomain, port, pushLog);
-        service.publicUrl = `https://${subdomain}.naaspeeti.xyz`;
-
         if (oldInstanceRunning) {
-            await stopAndRemoveContainer(appName, pushLog);
-            const commands = [
-                `docker rename ${targetContainerName} ${appName}`,
-                `rm -rf ~/apps/${appName}`,
-                `mv ~/apps/${targetAppFolder} ~/apps/${appName}`
-            ];
-            await executeSSHCommands(commands, logs, pushLog);
+            try {
+                await stopAndRemoveContainer(appName, pushLog);
+                const commands = [
+                    `docker rename ${targetContainerName} ${appName}`,
+                    `rm -rf ~/apps/${appName}`,
+                    `mv ~/apps/${targetAppFolder} ~/apps/${appName}`
+                ];
+                await executeSSHCommands(commands, logs, pushLog);
+            } catch (err) {
+                pushLog(`[${new Date().toISOString()}] WARNING: Blue-green swap failed: ${err.message}. Manual cleanup may be needed.`);
+                // Don't rethrow — new container IS running, deployment succeeded
+            }
             await collectContainerLogs(appName, pushLog);
         } else {
             await collectContainerLogs(appName, pushLog);
         }
     } catch (err) {
         // On deploy failure, if we did blue-green attempt, remove temporary deployment and keep old running
-        const tempName = `${appName}-new`;
         const stagingDir = `${appName}-new`;
 
         await stopAndRemoveContainer(tempName, pushLog);
@@ -463,7 +510,7 @@ async function ensureDockerContainerRunning(containerName, pushLog) {
     for (let attempt = 1; attempt <= 5; attempt++) {
         try {
             const stateCommands = [`docker inspect -f '{{.State.Running}}' ${containerName}`];
-            const stateResult = await executeSSHCommands(stateCommands, [], () => {});
+            const stateResult = await executeSSHCommands(stateCommands, [], () => { });
             const state = (stateResult.output || '').trim();
             pushLog(`[${new Date().toISOString()}] Container ${containerName} state: ${state}`);
 
@@ -488,17 +535,23 @@ async function detectContainerPort(containerName, pushLog) {
     for (let i = 0; i < 5; i++) {
         try {
             const detectCommands = [`docker exec ${containerName} ss -tulpn`];
-            const result = await executeSSHCommands(detectCommands, [], () => {}); // no logs
+            const result = await executeSSHCommands(detectCommands, [], () => { }); // no logs
             const output = result.output;
             const lines = output.split('\n');
             for (const line of lines) {
                 if (line.includes('node')) {
                     // const match = line.match(/0\.0\.0\.0:(\d+)/);
-                    const match = line.match(/:(\d{2,5})/);
+                    const match =
+                        line.match(/0\.0\.0\.0:(\d+)/) ||   // IPv4 explicit bind
+                        line.match(/\*:(\d+)/) ||            // wildcard bind
+                        line.match(/:::(\d+)/);              // IPv6 all-interfaces
+
                     if (match) {
                         const port = parseInt(match[1]);
-                        pushLog(`[${new Date().toISOString()}] Detected listening port: ${port}`);
-                        return port;
+                        if (port >= 1024 && port <= 65535) { // sanity check range
+                            pushLog(`[${new Date().toISOString()}] Detected listening port: ${port}`);
+                            return port;
+                        }
                     }
                 }
             }
@@ -535,17 +588,22 @@ server {
         `sudo rm -f /etc/nginx/sites-available/${subdomain}`,
 
         // Write new nginx config
-        `echo '${nginxConfig}' | sudo tee /etc/nginx/sites-available/${subdomain}`,
+        `cat << 'NGINXEOF' | sudo tee /etc/nginx/sites-available/${subdomain}
+${nginxConfig}
+NGINXEOF`,
 
         // Enable it
         `sudo ln -sf /etc/nginx/sites-available/${subdomain} /etc/nginx/sites-enabled/${subdomain}`,
 
         // Test and reload nginx
-        `sudo nginx -t && sudo nginx -s reload`,
-
-        // Issue SSL cert for this subdomain
-        `sudo certbot --nginx -d ${subdomain}.naaspeeti.xyz --non-interactive --agree-tos -m your@email.com`
+        `sudo nginx -t && sudo nginx -s reload`
     ];
+
+    const certbotEmail = process.env.CERTBOT_EMAIL;
+    if (!certbotEmail) throw new Error('CERTBOT_EMAIL environment variable is not set');
+
+    // Issue SSL cert for this subdomain
+    commands.push(`sudo certbot --nginx -d ${subdomain}.naaspeeti.xyz --non-interactive --agree-tos -m ${certbotEmail}`);
 
     await executeSSHCommands(commands, [], pushLog);
 
@@ -555,7 +613,7 @@ server {
 async function collectContainerLogs(appName, pushLog) {
     pushLog(`[${new Date().toISOString()}] Collecting logs for ${appName}...`);
     pushLog(`[${new Date().toISOString()}] Streaming logs in real-time.`);
-    const commands = [`timeout 12 docker logs -f --tail 200 ${appName} || true`]; // Stream logs for 12 seconds to capture startup logs
+    const commands = [`(timeout 12 docker logs -f --tail 200 ${appName} || true)`]; // Stream logs for 12 seconds to capture startup logs
 
     await executeSSHCommands(
         commands,
