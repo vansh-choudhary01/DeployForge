@@ -21,7 +21,7 @@ export async function registerUser(req, res) {
 
         await OtpVerification.findOneAndUpdate(
             { email },
-            { email, otp: hashedOtp, payload: { fullName : firstName + ' ' + lastName, email, password }, expiresAt: new Date(Date.now() + 5 * 60 * 1000) },
+            { email, otp: hashedOtp, payload: { fullName: firstName + ' ' + lastName, email, password }, expiresAt: new Date(Date.now() + 5 * 60 * 1000) },
             { upsert: true }
         );
 
@@ -54,7 +54,7 @@ export async function loginUser(req, res) {
         const token = user.generateJWT();
 
         res.cookie('token', token, {
-            maxAge: 60 * 60 * 24 * 7, // 7 days
+            maxAge: 60 * 60 * 24 * 7 * 1000, // 7 days
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
@@ -94,7 +94,7 @@ export async function verifyUser(req, res) {
 
         const token = user.generateJWT();
         res.cookie('token', token, {
-            maxAge: 60 * 60 * 24 * 7, // 7 days
+            maxAge: 60 * 60 * 24 * 7 * 1000, // 7 days
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
