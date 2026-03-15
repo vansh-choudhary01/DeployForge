@@ -43,6 +43,7 @@ export const serviceAPI = {
   getLogs: (id) => api.get(`/services/${id}/logs`),
   setEnv: (id, envData) => api.post(`/services/${id}/env`, envData),
   deleteEnv: (id, key) => api.delete(`/services/${id}/env/${key}`),
+  update: (id, serviceData) => api.patch(`/services/${id}`, serviceData),
   validateRepo: (repoUrl) => api.post('/services/validate-repo', { repo: repoUrl }),
 };
 

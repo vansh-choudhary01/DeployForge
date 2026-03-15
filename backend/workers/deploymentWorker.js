@@ -117,7 +117,15 @@ async function runDeployment(deployment, service) {
     logsMap.delete(deployment._id.toString()); // Clean up logs from memory after deployment is done
 }
 
-async function getPort() {
+async function getPort(preferredPort, serviceSubdomain) {
+    if (preferredPort) {
+        const existingPort = await UsedPortAndSubDomain.findOne({ port: preferredPort });
+        if (!existingPort || existingPort.subdomain === serviceSubdomain) {
+            return preferredPort;
+        }
+        console.log(`Preferred port ${preferredPort} is used by ${existingPort.subdomain}, selecting a new port`);
+    }
+
     let port = Math.floor(Math.random() * (65535 - 1024) + 1024); // Random port between 1024 and 65535
     let existingPort = await UsedPortAndSubDomain.findOne({ port });
 
@@ -141,10 +149,37 @@ async function getSubdomain(serviceName) {
     return subdomain;
 }
 
+async function getStableSubdomain(service) {
+    // Keep the same subdomain across redeploys if already set.
+    if (service.subdomain) {
+        return service.subdomain;
+    }
+
+    // Fallback to fresh subdomain generation if not set.
+    const subdomain = await getSubdomain(service.name);
+    service.subdomain = subdomain;
+    return subdomain;
+}
+
 async function deployViaSSH(deployment, service, logs, pushLog) {
-    const appName = `app-${deployment._id}`;
-    const port = await getPort();
+    const appName = `app-${service._id}`;
     const { gitRepositoryUrl, gitBranch, startCommand, environmentVariables } = service;
+
+    // Reuse same subdomain and port for the service across redeploys
+    const subdomain = await getStableSubdomain(service);
+    let port = service.port;
+
+    // Reuse existing port mapping for subdomain if exists
+    const existingPortRecord = await UsedPortAndSubDomain.findOne({ subdomain });
+    if (existingPortRecord) {
+        port = existingPortRecord.port;
+    }
+
+    port = await getPort(port, subdomain);
+
+    // Persist stable mapping attributes on service for future redeploys
+    service.subdomain = subdomain;
+    service.port = port;
 
     pushLog(`[${new Date().toISOString()}] Initializing deployment...`);
 
@@ -274,10 +309,12 @@ CMD ["sh","-c","${startCommand}"]`;
         deployment.dockerImage = appName;
         deployment.port = port;
 
-        const subdomain = await getSubdomain(service.name);
-
-        // Store port mapping in Port collection for tracking
-        await UsedPortAndSubDomain.create({ subdomain, port, deployment: deployment._id });
+        // Maintain stable subdomain mapping across redeploys
+        await UsedPortAndSubDomain.findOneAndUpdate(
+            { subdomain },
+            { subdomain, port, deployment: deployment._id },
+            { upsert: true, new: true }
+        );
 
         await setupSubdomain(subdomain, port, pushLog);
         service.publicUrl = `https://${subdomain}.naaspeeti.xyz`;
@@ -381,7 +418,7 @@ async function ensureDockerContainerRunning(containerName, pushLog) {
 
         await new Promise(resolve => setTimeout(resolve, 2000));
     }
-
+    await collectContainerLogs(containerName, pushLog); // Collect logs to help diagnose why container isn't running
     throw new Error(`Container ${containerName} is not running after 5 retries`);
 }
 
@@ -411,6 +448,7 @@ async function detectContainerPort(containerName, pushLog) {
         pushLog(`[${new Date().toISOString()}] Port not detected yet, retrying in 2 seconds...`);
         await new Promise(resolve => setTimeout(resolve, 2000));
     }
+    await collectContainerLogs(containerName, pushLog); // Collect logs to help diagnose why container isn't running
     throw new Error('Unable to detect listening port after 5 retries');
 }
 

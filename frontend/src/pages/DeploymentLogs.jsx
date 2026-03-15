@@ -114,6 +114,7 @@ export default function DeploymentLogs() {
                 status: data.status,
           deployedUrl: data.deployedUrl
         } : null);
+        fetchDeployment(); // Refresh deployment details
       }
     });
 

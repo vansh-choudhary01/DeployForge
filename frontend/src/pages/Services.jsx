@@ -35,9 +35,15 @@ export default function Services() {
   const handleRedeploy = async (serviceId) => {
     try {
       setActionLoading({ ...actionLoading, [serviceId]: 'redeploy' });
-      await serviceAPI.redeploy(serviceId);
+      const response = await serviceAPI.redeploy(serviceId);
       setError('');
-      // Refresh service if implemented
+      const deploymentId = response.data?.deployment?._id;
+      if (deploymentId) {
+        navigate(`/deployments/${deploymentId}/logs`);
+        return;
+      }
+      // fallback: refresh service list
+      await fetchServices();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to redeploy service');
     } finally {

@@ -22,6 +22,9 @@ const serviceSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    subdomain: {
+        type: String,
+    },
     publicUrl: {
         type: String,
     },

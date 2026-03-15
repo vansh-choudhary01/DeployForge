@@ -283,7 +283,6 @@ export async function getServiceLogs(req, res) {
     res.status(500).json({ message: 'Internal server error', error: err.message });
   }
 }
-
 export async function setServiceEnv(req, res) {
   try {
     const { id } = req.params;
@@ -304,17 +303,70 @@ export async function setServiceEnv(req, res) {
       return res.status(403).json({ message: 'Unauthorized' });
     }
 
-    const envIndex = service.environmentVariables.findIndex(ev => ev.key === key);
-    if (envIndex >= 0) {
-      service.environmentVariables[envIndex].value = value;
-    } else {
-      service.environmentVariables.push({ key, value });
-    }
+    const updatedService = await Service.findOneAndUpdate(
+      { _id: id, 'environmentVariables.key': key },
+      { $set: { 'environmentVariables.$.value': value } },
+      { new: true }
+    );
 
-    await service.save();
+    let resultService;
+    if (updatedService) {
+      resultService = updatedService;
+    } else {
+      resultService = await Service.findByIdAndUpdate(
+        id,
+        { $push: { environmentVariables: { key, value } } },
+        { new: true }
+      );
+    }
 
     return res.json({
       message: 'Environment variable set successfully',
+      service: resultService
+    });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: 'Internal server error', error: err.message });
+  }
+}
+
+export async function updateServiceConfig(req, res) {
+  try {
+    const { id } = req.params;
+    const {
+      gitRepositoryUrl,
+      gitBranch,
+      rootDirectory,
+      buildCommand,
+      preDeployCommand,
+      startCommand,
+      healthCheckPath
+    } = req.body;
+    const userId = req.userId;
+
+    const service = await Service.findById(id);
+    if (!service) {
+      return res.status(404).json({ message: 'Service not found' });
+    }
+
+    const project = await Project.findById(service.project);
+    if (!project || project.user.toString() !== userId) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    if (gitRepositoryUrl !== undefined) service.gitRepositoryUrl = gitRepositoryUrl;
+    if (gitBranch !== undefined) service.gitBranch = gitBranch;
+    if (rootDirectory !== undefined) service.rootDirectory = rootDirectory;
+    if (buildCommand !== undefined) service.buildCommand = buildCommand;
+    if (preDeployCommand !== undefined) service.preDeployCommand = preDeployCommand;
+    if (startCommand !== undefined) service.startCommand = startCommand;
+    if (healthCheckPath !== undefined) service.healthCheckPath = healthCheckPath;
+
+    service.status = 'pending';
+    await service.save();
+
+    return res.json({
+      message: 'Service configuration updated successfully',
       service
     });
   } catch (err) {
@@ -338,12 +390,15 @@ export async function deleteServiceEnv(req, res) {
       return res.status(403).json({ message: 'Unauthorized' });
     }
 
-    service.environmentVariables = service.environmentVariables.filter(ev => ev.key !== key);
-    await service.save();
+    const resultService = await Service.findByIdAndUpdate(
+      id,
+      { $pull: { environmentVariables: { key } } },
+      { new: true }
+    );
 
     return res.json({
       message: 'Environment variable deleted successfully',
-      service
+      service: resultService
     });
   } catch (err) {
     console.log(err);

@@ -12,9 +12,19 @@ export default function ServiceDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [redeploying, setRedeploying] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [branchValue, setBranchValue] = useState('');
+  const [buildCommandValue, setBuildCommandValue] = useState('');
+  const [startCommandValue, setStartCommandValue] = useState('');
+  const [preDeployCommandValue, setPreDeployCommandValue] = useState('');
+  const [rootDirectoryValue, setRootDirectoryValue] = useState('');
+  const [healthCheckPathValue, setHealthCheckPathValue] = useState('');
+  const [editStatus, setEditStatus] = useState('');
   const [envKey, setEnvKey] = useState('');
   const [envValue, setEnvValue] = useState('');
   const [envStatus, setEnvStatus] = useState('');
+  const [envBulkText, setEnvBulkText] = useState('');
+  const [envBulkStatus, setEnvBulkStatus] = useState('');
 
   useEffect(() => {
     fetchService();
@@ -23,8 +33,18 @@ export default function ServiceDetails() {
   const fetchService = async () => {
     try {
       const response = await api.get(`/services/${id}`);
-      setService(response.data.service);
+      const returnedService = response.data.service;
+      setService(returnedService);
       setDeployments(response.data.deployments || []);
+
+      // Auto-fill bulk env editor with existing environment variables /
+      // allow users to paste and update directly.
+      if (returnedService?.environmentVariables) {
+        const lines = returnedService.environmentVariables.map(ev => `${ev.key}=${ev.value}`);
+        setEnvBulkText(lines.join('\n'));
+      } else {
+        setEnvBulkText('');
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to fetch service');
     } finally {
@@ -37,9 +57,17 @@ export default function ServiceDetails() {
 
     setRedeploying(true);
     try {
-      await api.post(`/services/${id}/redeploy`);
+      const response = await api.post(`/services/${id}/redeploy`);
       setError('');
-      // Refresh service and deployments
+
+      // Auto-navigation to deployment logs for the new deployment
+      const deploymentId = response.data?.deployment?._id;
+      if (deploymentId) {
+        navigate(`/deployments/${deploymentId}/logs`);
+        return;
+      }
+
+      // Fallback: refresh service and deployments
       await fetchService();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to redeploy service');
@@ -56,6 +84,43 @@ export default function ServiceDetails() {
       navigate('/services');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to delete service');
+    }
+  };
+
+  const handleEdit = () => {
+    if (!service) return;
+    setBranchValue(service.gitBranch || '');
+    setBuildCommandValue(service.buildCommand || '');
+    setStartCommandValue(service.startCommand || '');
+    setPreDeployCommandValue(service.preDeployCommand || '');
+    setRootDirectoryValue(service.rootDirectory || '');
+    setHealthCheckPathValue(service.healthCheckPath || '');
+    setEditStatus('');
+    setEditMode(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditMode(false);
+    setEditStatus('');
+  };
+
+  const handleSaveEdit = async () => {
+    try {
+      const updateData = {
+        gitBranch: branchValue,
+        buildCommand: buildCommandValue,
+        startCommand: startCommandValue,
+        preDeployCommand: preDeployCommandValue,
+        rootDirectory: rootDirectoryValue,
+        healthCheckPath: healthCheckPathValue,
+      };
+
+      await serviceAPI.update(id, updateData);
+      setEditStatus('Service details updated successfully.');
+      setEditMode(false);
+      await fetchService();
+    } catch (err) {
+      setEditStatus(err.response?.data?.message || 'Failed to update service details');
     }
   };
 
@@ -85,6 +150,93 @@ export default function ServiceDetails() {
       await fetchService();
     } catch (err) {
       setEnvStatus(err.response?.data?.message || 'Failed to delete env');
+    }
+  };
+
+  const parseDotEnv = (text) => {
+    const entries = {};
+    const lines = text.split('\n');
+
+    for (let line of lines) {
+      line = line.trim();
+      if (!line || line.startsWith('#')) continue;
+
+      const equalsIndex = line.indexOf('=');
+      if (equalsIndex < 0) continue;
+
+      const key = line.slice(0, equalsIndex).trim();
+      let value = line.slice(equalsIndex + 1).trim();
+
+      // Remove optional quotes
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+
+      if (key) {
+        entries[key] = value;
+      }
+    }
+
+    return entries;
+  };
+
+  const handleApplyEnvBulk = async () => {
+    const parsed = parseDotEnv(envBulkText);
+    const newKeys = Object.keys(parsed);
+
+    // key-oriented update, plus deletion of keys removed from the raw env text
+    const existingKeys = service?.environmentVariables?.map((ev) => ev.key) || [];
+    const keysToDelete = existingKeys.filter((k) => !newKeys.includes(k));
+
+    if (!newKeys.length && !keysToDelete.length) {
+      setEnvBulkStatus('No changes detected');
+      return;
+    }
+
+    try {
+      // Set or update parsed entries
+      const setRequests = newKeys.map((key) => serviceAPI.setEnv(id, { key, value: parsed[key] }));
+      await Promise.all(setRequests);
+
+      // Delete obsolete keys not present in .env text
+      const deleteRequests = keysToDelete.map((key) => serviceAPI.deleteEnv(id, key));
+      await Promise.all(deleteRequests);
+
+      const ops = [];
+      if (newKeys.length) ops.push(`${newKeys.length} applied`);
+      if (keysToDelete.length) ops.push(`${keysToDelete.length} removed`);
+
+      setEnvBulkStatus(`Bulk sync complete: ${ops.join(', ')}`);
+      setEnvStatus('');
+      setEnvKey('');
+      setEnvValue('');
+      await fetchService();
+    } catch (err) {
+      setEnvBulkStatus(err.response?.data?.message || 'Failed to bulk sync env');
+    }
+  };
+
+  const handleDeleteEnvBulk = async () => {
+    const parsed = parseDotEnv(envBulkText);
+    const keys = Object.keys(parsed);
+
+    if (!keys.length) {
+      setEnvBulkStatus('No valid env vars found in input');
+      return;
+    }
+
+    try {
+      const requests = keys.map((key) => serviceAPI.deleteEnv(id, key));
+      await Promise.all(requests);
+
+      setEnvBulkStatus(`Deleted ${keys.length} env vars successfully`);
+      setEnvStatus('');
+      setEnvKey('');
+      setEnvValue('');
+      setEnvBulkText('');
+      await fetchService();
+    } catch (err) {
+      setEnvBulkStatus(err.response?.data?.message || 'Failed to delete bulk env');
     }
   };
 
@@ -212,6 +364,12 @@ export default function ServiceDetails() {
             View Logs
           </button>
           <button
+            onClick={handleEdit}
+            className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors"
+          >
+            Edit
+          </button>
+          <button
             onClick={handleDelete}
             className="flex items-center gap-2 ml-auto px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
           >
@@ -219,6 +377,86 @@ export default function ServiceDetails() {
             Delete
           </button>
         </div>
+
+        {editMode && (
+          <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 mt-4">
+            <h3 className="text-lg font-semibold text-white mb-4">Edit Service Details</h3>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm text-slate-300">Branch</label>
+                <input
+                  type="text"
+                  value={branchValue}
+                  onChange={(e) => setBranchValue(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-slate-300">Build Command</label>
+                <input
+                  type="text"
+                  value={buildCommandValue}
+                  onChange={(e) => setBuildCommandValue(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-slate-300">Start Command</label>
+                <input
+                  type="text"
+                  value={startCommandValue}
+                  onChange={(e) => setStartCommandValue(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-slate-300">Pre-deploy Command</label>
+                <input
+                  type="text"
+                  value={preDeployCommandValue}
+                  onChange={(e) => setPreDeployCommandValue(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-slate-300">Root Directory</label>
+                <input
+                  type="text"
+                  value={rootDirectoryValue}
+                  onChange={(e) => setRootDirectoryValue(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-slate-300">Health Check Path</label>
+                <input
+                  type="text"
+                  value={healthCheckPathValue}
+                  onChange={(e) => setHealthCheckPathValue(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                />
+              </div>
+
+              {editStatus && <p className="text-sm text-slate-300">{editStatus}</p>}
+
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveEdit}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Environment Variables */}
@@ -247,6 +485,41 @@ export default function ServiceDetails() {
             Add / Update
           </button>
         </form>
+
+        <div className="mb-4">
+          <label className="text-sm text-slate-300">Bulk .env editor (copy/paste .env format)</label>
+          <textarea
+            value={envBulkText}
+            onChange={(e) => setEnvBulkText(e.target.value)}
+            placeholder="KEY=VALUE\nOTHER=VALUE"
+            rows={5}
+            className="mt-2 w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none"
+          />
+          <div className="flex gap-2 mt-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleApplyEnvBulk}
+              className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-semibold"
+            >
+              Apply .env
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteEnvBulk}
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold"
+            >
+              Bulk Delete
+            </button>
+            <button
+              type="button"
+              onClick={() => setEnvBulkText('')}
+              className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg"
+            >
+              Clear
+            </button>
+          </div>
+          {envBulkStatus && <p className="text-sm text-slate-300 mt-2">{envBulkStatus}</p>}
+        </div>
 
         {envStatus && (
           <p className="text-sm text-slate-300 mb-4">{envStatus}</p>
