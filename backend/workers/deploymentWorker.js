@@ -95,7 +95,8 @@ async function runDeployment(deployment, service) {
         console.error('Deployment error:', err);
         pushLog(`[${new Date().toISOString()}] ERROR: ${err.message}`);
 
-        service.status = "failed";
+        const running = await isContainerRunning(`app-${service._id}`);
+        service.status = running ? "running" : "failed";
         deployment.status = "failed";
         deployment.logs = logs;
 
@@ -161,25 +162,66 @@ async function getStableSubdomain(service) {
     return subdomain;
 }
 
+async function isContainerRunning(containerName) {
+    try {
+        const result = await executeSSHCommands([`docker ps -q -f name=^/${containerName}$`], [], () => {});
+        return Boolean(result.output && result.output.trim());
+    } catch (err) {
+        return false;
+    }
+}
+
+async function pickNewPortForBlueGreen(oldPort, serviceSubdomain) {
+    if (!oldPort) {
+        return await getPort(null, serviceSubdomain);
+    }
+    let port = await getPort(oldPort, serviceSubdomain);
+    if (port === oldPort) {
+        // find alternative port
+        for (let i = 0; i < 5; i++) {
+            port = await getPort(null, serviceSubdomain);
+            if (port !== oldPort) break;
+        }
+    }
+    return port;
+}
+
+async function stopAndRemoveContainer(containerName, pushLog) {
+    try {
+        await executeSSHCommands([
+            `docker stop ${containerName} || true`,
+            `docker rm ${containerName} || true`
+        ], [], pushLog);
+    } catch (err) {
+        pushLog(`[${new Date().toISOString()}] Warning: could not stop/remove ${containerName}: ${err.message}`);
+    }
+}
+
 async function deployViaSSH(deployment, service, logs, pushLog) {
     const appName = `app-${service._id}`;
+    const tempName = `${appName}-new`;
     const { gitRepositoryUrl, gitBranch, startCommand, environmentVariables } = service;
 
-    // Reuse same subdomain and port for the service across redeploys
+    // Reuse same subdomain for the service across redeploys
     const subdomain = await getStableSubdomain(service);
     let port = service.port;
 
-    // Reuse existing port mapping for subdomain if exists
     const existingPortRecord = await UsedPortAndSubDomain.findOne({ subdomain });
     if (existingPortRecord) {
         port = existingPortRecord.port;
     }
 
-    port = await getPort(port, subdomain);
+    const oldInstanceRunning = await isContainerRunning(appName);
 
-    // Persist stable mapping attributes on service for future redeploys
+    // If there is an old instance, deploy to temp instance first
+    const targetContainerName = oldInstanceRunning ? tempName : appName;
+    const targetAppFolder = oldInstanceRunning ? `${appName}-new` : appName;
+
+    port = oldInstanceRunning ? await pickNewPortForBlueGreen(port, subdomain) : await getPort(port, subdomain);
+
+    // Persist stable mapping attributes on service for future redeploys (after successful deploy we may adjust)
     service.subdomain = subdomain;
-    service.port = port;
+    service.port = oldInstanceRunning ? port : port;
 
     pushLog(`[${new Date().toISOString()}] Initializing deployment...`);
 
@@ -200,18 +242,20 @@ async function deployViaSSH(deployment, service, logs, pushLog) {
             // Ensure base directory exists
             `mkdir -p ~/apps`, // create base directory if it doesn't exist
             `cd ~/apps`,
-
-            // Handle redeployment safely - stop and remove existing container
-            `docker stop ${appName} || true`,
-            `docker rm ${appName} || true`,
-
-            // Remove previous code directory
-            `rm -rf ${appName}`,
-
-            // Clone the repository
-            `git clone --branch ${gitBranch} ${gitRepositoryUrl} ${appName}`,
-            `cd ${appName}`,
         ];
+
+        if (oldInstanceRunning) {
+            // Keep old container running until new one is verified
+            commands.push(`rm -rf ${targetAppFolder}`);
+            commands.push(`docker rm -f ${targetContainerName} || true`);
+        } else {
+            commands.push(`docker stop ${appName} || true`);
+            commands.push(`docker rm ${appName} || true`);
+            commands.push(`rm -rf ${targetAppFolder}`);
+        }
+
+        commands.push(`git clone --branch ${gitBranch} ${gitRepositoryUrl} ${targetAppFolder}`);
+        commands.push(`cd ${targetAppFolder}`);
 
         let relativeRootDirectory = '/';
         // Navigate to rootDirectory if specified
@@ -266,7 +310,7 @@ CMD ["sh","-c","${startCommand}"]`;
 
         // Start the container
         pushLog(`[${new Date().toISOString()}] Starting Docker container on port ${port}`);
-        let dockerRunCmd = `docker run -d --name ${appName} -e PORT=3000 -p ${port}:3000`;
+        let dockerRunCmd = `docker run -d --name ${targetContainerName} -e PORT=3000 -p ${port}:3000`;
 
         if (environmentVariables && environmentVariables.length > 0) {
             dockerRunCmd += ` --env-file .env`;
@@ -279,30 +323,28 @@ CMD ["sh","-c","${startCommand}"]`;
         pushLog(`[${new Date().toISOString()}] Connecting to EC2...`);
         const result = await executeSSHCommands(commands, logs, pushLog);
 
-        pushLog(`[${new Date().toISOString()}] Docker container started successfully: ${appName}`);
+        pushLog(`[${new Date().toISOString()}] Docker container started successfully: ${targetContainerName}`);
 
-        const detectedPort = await detectContainerPort(appName, pushLog);
+        const detectedPort = await detectContainerPort(targetContainerName, pushLog);
 
         if (detectedPort && detectedPort !== 3000) {
 
             pushLog(`[${new Date().toISOString()}] Detected port ${detectedPort}, restarting container with correct port mapping`);
 
             const restartCommands = [
-                `cd ~/apps/${appName}`,
+                `cd ~/apps/${targetAppFolder}`,
                 `cd ${relativeRootDirectory}`,
 
-                `docker stop ${appName}`,
+                `docker stop ${targetContainerName} || true`,
+                `docker rm ${targetContainerName} || true`,
 
-                `docker rm ${appName}`,
-
-                `docker run -d --name ${appName} -e PORT=${detectedPort} -p ${port}:${detectedPort}${environmentVariables && environmentVariables.length > 0 ? ' --env-file .env' : ''} ${appName}`
-
+                `docker run -d --name ${targetContainerName} -e PORT=${detectedPort} -p ${port}:${detectedPort}${environmentVariables && environmentVariables.length > 0 ? ' --env-file .env' : ''} ${appName}`
             ];
 
             await executeSSHCommands(restartCommands, logs, pushLog);
 
             // Ensure the restarted container is running before proceeding.
-            await ensureDockerContainerRunning(appName, pushLog);
+            await ensureDockerContainerRunning(targetContainerName, pushLog);
         }
 
         // Store deployment metadata
@@ -319,8 +361,26 @@ CMD ["sh","-c","${startCommand}"]`;
         await setupSubdomain(subdomain, port, pushLog);
         service.publicUrl = `https://${subdomain}.naaspeeti.xyz`;
 
-        await collectContainerLogs(appName, pushLog);
+        if (oldInstanceRunning) {
+            await stopAndRemoveContainer(appName, pushLog);
+            const commands = [
+                `docker rename ${targetContainerName} ${appName}`,
+                `rm -rf ~/apps/${appName}`,
+                `mv ~/apps/${targetAppFolder} ~/apps/${appName}`
+            ];
+            await executeSSHCommands(commands, logs, pushLog);
+            await collectContainerLogs(appName, pushLog);
+        } else {
+            await collectContainerLogs(appName, pushLog);
+        }
     } catch (err) {
+        // On deploy failure, if we did blue-green attempt, remove temporary deployment and keep old running
+        const tempName = `${appName}-new`;
+        const stagingDir = `${appName}-new`;
+
+        await stopAndRemoveContainer(tempName, pushLog);
+        await executeSSHCommands([`rm -rf ~/apps/${stagingDir}`], [], pushLog);
+
         throw new Error(`SSH deployment failed: ${err.message}`);
     }
 }
