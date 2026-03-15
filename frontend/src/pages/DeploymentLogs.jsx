@@ -53,7 +53,7 @@ export default function DeploymentLogs() {
 
   useEffect(() => {
     // Initialize socket connection with credentials so cookies are sent, plus reconnect behavior
-    const socketUrl = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:4000';
+    const socketUrl = process.env.REACT_APP_SOCKET_URL || 'http://localhost:4000';
     const newSocket = io(socketUrl, {
       withCredentials: true,
       reconnection: true,

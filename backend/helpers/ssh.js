@@ -1,8 +1,13 @@
 import { Client } from "ssh2";
 
+const activeConnections = new Set();
+process.on('SIGINT', () => { activeConnections.forEach(c => c.end()); process.exit(0); });
+process.on('SIGTERM', () => { activeConnections.forEach(c => c.end()); process.exit(0); });
+
 export function executeSSHCommands(commands, logs, pushLog) {
     return new Promise((resolve, reject) => {
         const conn = new Client();
+        activeConnections.add(conn);
 
         conn.on('ready', () => {
             pushLog(`[${new Date().toISOString()}] Connected to EC2`);
@@ -12,6 +17,7 @@ export function executeSSHCommands(commands, logs, pushLog) {
             conn.exec(fullCommand, (err, stream) => {
                 if (err) {
                     conn.end();
+                    activeConnections.delete(conn);
                     return reject(err);
                 }
 
@@ -42,6 +48,7 @@ export function executeSSHCommands(commands, logs, pushLog) {
 
                 stream.on('close', (code) => {
                     conn.end();
+                    activeConnections.delete(conn);
 
                     if (code === 0) {
                         pushLog(`[${new Date().toISOString()}] Commands executed successfully`);
@@ -54,6 +61,7 @@ export function executeSSHCommands(commands, logs, pushLog) {
         });
 
         conn.on('error', (err) => {
+            activeConnections.delete(conn);
             pushLog(`[${new Date().toISOString()}] CONNECTION ERROR: ${err.message}`);
             reject(err);
         });
@@ -68,6 +76,7 @@ export function executeSSHCommands(commands, logs, pushLog) {
                 readyTimeout: 30000,
             });
         } catch (err) {
+            activeConnections.delete(conn);
             pushLog(`[${new Date().toISOString()}] SSH CONFIG ERROR: ${err.message}`);
             reject(new Error(`Failed to read SSH key: ${err.message}`));
         }
