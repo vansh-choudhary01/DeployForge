@@ -1,5 +1,4 @@
 import { Client } from "ssh2";
-import fs from 'fs';
 
 export function executeSSHCommands(commands, logs, pushLog) {
     return new Promise((resolve, reject) => {
@@ -65,7 +64,7 @@ export function executeSSHCommands(commands, logs, pushLog) {
                 host: process.env.EC2_HOST || 'localhost',
                 port: 22,
                 username: process.env.EC2_USER || 'ubuntu',
-                privateKey: fs.readFileSync(process.env.EC2_SSH_KEY_PATH),
+                privateKey: Buffer.from(process.env.EC2_SSH_KEY_BASE64, 'base64').toString('utf-8'),
                 readyTimeout: 30000,
             });
         } catch (err) {
