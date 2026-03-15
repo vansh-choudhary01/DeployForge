@@ -82,7 +82,10 @@ export async function stopAndRemoveContainer(containerName, pushLog) {
 export async function collectContainerLogs(appName, pushLog) {
     pushLog(`[${new Date().toISOString()}] Collecting logs for ${appName}...`);
     pushLog(`[${new Date().toISOString()}] Streaming logs in real-time.`);
-    const commands = [`(timeout 12 docker logs -f --tail 200 ${appName} || true)`]; // Stream logs for 12 seconds to capture startup logs
+    const commands = [
+        `(timeout 12 docker logs -f --tail 200 ${appName} || true)`,
+        `docker image prune -af`, // clean unused images in same connection
+    ]; // Stream logs for 12 seconds to capture startup logs
 
     await executeSSHCommands(
         commands,

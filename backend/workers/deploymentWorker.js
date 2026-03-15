@@ -268,6 +268,8 @@ DOCKERFILEEOF`);
         pushLog(`[${new Date().toISOString()}] Building Docker image: ${appName}`);
         // commands.push(`docker build --no-cache -t ${appName} .`);
         commands.push(`docker build -t ${appName} .`);
+        // Delete node_modules and .git after build — no longer needed, saves disk space
+        commands.push(`rm -rf node_modules .git`);
 
         // Start the container
         pushLog(`[${new Date().toISOString()}] Starting Docker container on port ${port}`);
