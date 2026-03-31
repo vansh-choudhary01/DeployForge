@@ -8,6 +8,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { getDeploymentLogs } from './workers/deploymentWorker.js';
+import './ec2Host/ec2_monitor.js';
 dotenv.config();
 
 const app = express();
