@@ -9,17 +9,18 @@ import { executeSSHCommands } from "../helpers/ssh.js";
 import { setupSubdomain } from "../helpers/nginx.js";
 import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
 import { migrateService } from "../ec2Host/ec2_consolidation.js";
+import { consumeFromQueue } from "../RabbitMQ/queue.js";
 
 // Start deployment worker - polls every 2 seconds for queued deployments
 let activeDeployments = 0;
-const MAX_CONCURRENT_DEPLOYMENTS = 2; // tune to your EC2 capacity
 const DEPLOYMENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes timeout for deployments
 
-setInterval(async () => {
-    if (activeDeployments >= MAX_CONCURRENT_DEPLOYMENTS) return;
+consumeFromQueue(deployFromQueue);
+
+export async function deployFromQueue(deploymentId) {
     try {
         const deployment = await Deployment.findOneAndUpdate(
-            { status: "queued" },
+            { status: "queued", _id: deploymentId },
             { status: "building" },
             { sort: { createdAt: 1 } }
         );
@@ -51,7 +52,7 @@ setInterval(async () => {
     } catch (err) {
         console.error('Worker error:', err);
     }
-}, 2000);
+};
 
 const logsMap = new Map(); // In-memory map to store logs for each deployment
 

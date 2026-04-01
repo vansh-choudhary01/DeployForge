@@ -5,6 +5,7 @@ import { executeSSHCommands } from "../helpers/ssh.js";
 import { ensureDockerContainerRunning } from "../helpers/docker.js";
 import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
 import { migrateService } from "../ec2Host/ec2_consolidation.js";
+import { sendToQueue } from "../RabbitMQ/queue.js";
 
 export async function validateRepo(req, res) {
   try {
@@ -140,6 +141,8 @@ export async function deployService(req, res) {
       deployedUrl: "",
     });
 
+    await sendToQueue(deployment._id.toString());
+
     return res.json({
       message: "Deployment queued",
       service,
@@ -204,6 +207,8 @@ export async function redeployService(req, res) {
       containerId: '',
       deployedUrl: '',
     });
+
+    await sendToQueue(deployment._id.toString());
 
     service.status = 'pending';
     await service.save();
