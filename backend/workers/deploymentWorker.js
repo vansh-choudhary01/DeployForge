@@ -325,7 +325,8 @@ DOCKERFILEEOF`);
         deployment.dockerImage = appName;
         deployment.port = port;
 
-        await setupSubdomain(subdomain, port, pushLog);
+        // setup global certificate and subdomain in nginx on main backend server to proxy to the service's EC2 host and port
+        // await setupSubdomain(subdomain, port, pushLog);
         service.publicUrl = `https://${subdomain}.naaspeeti.xyz`;
 
         // Maintain stable subdomain mapping across redeploys
