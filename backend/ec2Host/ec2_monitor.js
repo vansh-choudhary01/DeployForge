@@ -19,7 +19,7 @@ setInterval(async () => {
             });
         }
     } catch (err) {
-
+        console.error('Error during EC2 monitoring:', err);
     }
 }, 30 * 1000); // run every 30 seconds
 
