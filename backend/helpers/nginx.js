@@ -7,6 +7,9 @@ server {
     server_name ${subdomain}.naaspeeti.xyz;
 
     location / {
+        mirror /wake;
+        mirror_request_body off;
+
         proxy_pass http://localhost:${port};
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -14,6 +17,11 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_cache_bypass $http_upgrade;
+    }
+
+    location /wake {
+        internal;
+        proxy_pass https://naaspeeti.xyz/api/services/wake/${subdomain};
     }
 }`;
 

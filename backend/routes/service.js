@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { validateRepo, getServices, deployService, getService, redeployService, deleteService, getServiceLogs, setServiceEnv, deleteServiceEnv, updateServiceConfig } from '../controllers/services.js';
+import { validateRepo, getServices, deployService, getService, redeployService, deleteService, getServiceLogs, setServiceEnv, deleteServiceEnv, updateServiceConfig, wakeUpService } from '../controllers/services.js';
 
 const router = Router();
 
@@ -17,5 +17,7 @@ router.get('/:id/logs', getServiceLogs);
 // environment variables
 router.post('/:id/env', setServiceEnv);
 router.delete('/:id/env/:key', deleteServiceEnv);
+
+router.get('/wake/:subdomain', wakeUpService);
 
 export default router;

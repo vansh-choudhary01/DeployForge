@@ -1,6 +1,8 @@
 import Deployment from "../models/Deployment.js";
 import Service from "../models/Service.js";
 import Project from "../models/Project.js";
+import { executeSSHCommands } from "../helpers/ssh.js";
+import { ensureDockerContainerRunning } from "../helpers/docker.js";
 
 export async function validateRepo(req, res) {
   try {
@@ -404,4 +406,39 @@ export async function deleteServiceEnv(req, res) {
     console.log(err);
     res.status(500).json({ message: 'Internal server error', error: err.message });
   }
+}
+
+export async function wakeUpService(req, res) {
+  try {
+    const { subdomain } = req.params;
+    const service = await Service.findOne({ subdomain }).populate('ec2Host');
+
+    if (!service) {
+      return res.status(404).message("service not found");
+    }
+    if (service.status === 'sleeping') {
+      await WakeServiceSubDomain(service);
+      return res.status(200).message("successfully wake the service");
+    }
+
+    return res.status(200).message(`service isn't in sleep mode, current service status : ${service.status}`);
+  } catch (err) {
+    console.log(err);
+    return res.status(500).message(`ERROR : while wakeing up the service -> ${err}`);
+  }
+}
+
+async function WakeServiceSubDomain(service) {
+  const appName = `app-${service._id}`;
+  service.status = 'waking';
+  await service.save();
+
+  await executeSSHCommands([`docker start ${appName}`], [], () => {}, service.ec2Host?.ip);
+
+  // wait for container to start
+  await new Promise(resolve => setTimeout(resolve, 5000));
+  await ensureDockerContainerRunning(appName, () => {});
+
+  service.status = 'running';
+  await service.save();
 }

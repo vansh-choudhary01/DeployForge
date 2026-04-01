@@ -4,7 +4,7 @@ const activeConnections = new Set();
 process.on('SIGINT', () => { activeConnections.forEach(c => c.end()); process.exit(0); });
 process.on('SIGTERM', () => { activeConnections.forEach(c => c.end()); process.exit(0); });
 
-export function executeSSHCommands(commands, logs, pushLog) {
+export function executeSSHCommands(commands, logs, pushLog, ec2Host = process.env.EC2_HOST || 'localhost') {
     return new Promise((resolve, reject) => {
         const conn = new Client();
         activeConnections.add(conn);
@@ -69,7 +69,7 @@ export function executeSSHCommands(commands, logs, pushLog) {
         // Connect to EC2
         try {
             conn.connect({
-                host: process.env.EC2_HOST || 'localhost',
+                host: ec2Host,
                 port: 22,
                 username: process.env.EC2_USER || 'ubuntu',
                 privateKey: Buffer.from(process.env.EC2_SSH_KEY_BASE64, 'base64').toString('utf-8'),

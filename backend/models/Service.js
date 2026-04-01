@@ -89,7 +89,7 @@ const serviceSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'building', 'deploying', 'running', 'failed', 'stopped'],
+        enum: ['pending', 'building', 'deploying', 'running', 'sleeping', 'failed', 'stopped', 'waking'],
         default: 'pending'
     },
     logs: [{
@@ -114,6 +114,11 @@ const serviceSchema = new mongoose.Schema({
     deploymentNumber: {
         type: Number,
         default: 0
+    },
+    lastRequestAt: Date,
+    ec2Host: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'EC2Host'
     }
 }, {
     timestamps: true
