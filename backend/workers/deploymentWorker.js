@@ -7,6 +7,8 @@ import { getStableSubdomain } from "../helpers/subdomains.js";
 import { getPort, pickNewPortForBlueGreen } from "../helpers/ports.js";
 import { executeSSHCommands } from "../helpers/ssh.js";
 import { setupSubdomain } from "../helpers/nginx.js";
+import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
+import { migrateService } from "../ec2Host/ec2_consolidation.js";
 
 // Start deployment worker - polls every 2 seconds for queued deployments
 let activeDeployments = 0;
@@ -25,13 +27,21 @@ setInterval(async () => {
         if (!deployment) return;
 
         // Get service details
-        const service = await Service.findById(deployment.service);
+        const service = await Service.findById(deployment.service).populate('ec2Host');
         if (!service) {
             await Deployment.updateOne(
                 { _id: deployment._id },
                 { status: "failed", logs: ["Service not found"] }
             );
             return;
+        }
+        if (service.status === "sleeping" && service.ec2Host) {
+            const bestEc2 = await getBestEc2();
+            await migrateService(service.ec2Host, bestEc2);
+        } else if (!service.ec2Host) {
+            const bestEc2 = await getBestEc2();
+            service.ec2Host = bestEc2;;
+            await service.save();
         }
 
         activeDeployments++;
@@ -284,7 +294,7 @@ DOCKERFILEEOF`);
 
         // Execute all commands via SSH
         pushLog(`[${new Date().toISOString()}] Connecting to EC2...`);
-        const result = await executeSSHCommands(commands, logs, pushLog);
+        const result = await executeSSHCommands(commands, logs, pushLog, service.ec2Host?.ip);
 
         pushLog(`[${new Date().toISOString()}] Docker container started successfully: ${targetContainerName}`);
 
@@ -304,7 +314,7 @@ DOCKERFILEEOF`);
                 `docker run -d --name ${targetContainerName} -e PORT=${detectedPort} -p ${port}:${detectedPort}${environmentVariables && environmentVariables.length > 0 ? ' --env-file .env' : ''} ${appName}`
             ];
 
-            await executeSSHCommands(restartCommands, logs, pushLog);
+            await executeSSHCommands(restartCommands, logs, pushLog, service.ec2Host?.ip);
 
             // Ensure the restarted container is running before proceeding.
             await ensureDockerContainerRunning(targetContainerName, pushLog);
@@ -332,7 +342,7 @@ DOCKERFILEEOF`);
                     `rm -rf ~/apps/${appName}`,
                     `mv ~/apps/${targetAppFolder} ~/apps/${appName}`
                 ];
-                await executeSSHCommands(commands, logs, pushLog);
+                await executeSSHCommands(commands, logs, pushLog, service.ec2Host?.ip);
             } catch (err) {
                 pushLog(`[${new Date().toISOString()}] WARNING: Blue-green swap failed: ${err.message}. Manual cleanup may be needed.`);
                 // Don't rethrow — new container IS running, deployment succeeded
@@ -346,7 +356,7 @@ DOCKERFILEEOF`);
         const stagingDir = `${appName}-new`;
 
         await stopAndRemoveContainer(tempName, pushLog);
-        await executeSSHCommands([`rm -rf ~/apps/${stagingDir}`], [], pushLog);
+        await executeSSHCommands([`rm -rf ~/apps/${stagingDir}`], [], pushLog, service.ec2Host?.ip);
 
         throw new Error(`SSH deployment failed: ${err.message}`);
     }
