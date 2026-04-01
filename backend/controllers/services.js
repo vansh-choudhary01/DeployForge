@@ -428,6 +428,9 @@ export async function wakeUpService(req, res) {
       return res.status(200).message("successfully wake the service");
     }
 
+    service.lastRequestAt = new Date();
+    await service.save();
+
     return res.status(200).message(`service isn't in sleep mode, current service status : ${service.status}`);
   } catch (err) {
     console.log(err);
