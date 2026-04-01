@@ -1,4 +1,5 @@
 import { executeSSHCommands } from "../helpers/ssh";
+import { Ec2Registry } from "../models/ec2Registry";
 import Service from "../models/Service";
 
 setInterval(async () => {
@@ -22,4 +23,14 @@ async function sleepService(service) {
     service.status = 'sleeping';
     await service.save();
     console.log(`Service ${service.name} is now sleeping`);
+
+    const ec2Registry = await Ec2Registry.findById(service.ec2Host);
+    if (ec2Registry) {
+        ec2Registry.totalServices -= 1;
+        if (ec2Registry.totalServices < 0) {
+            ec2Registry.totalServices = 0;
+        }
+        ec2Registry.status = 'active'; // mark EC2 as active again since it has capacity now
+        await ec2Registry.save();
+    }
 }

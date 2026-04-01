@@ -19,7 +19,7 @@ const ec2RegistrySchema = new mongoose.Schema({
     // Capacity
     totalServices: { type: Number, default: 0 },
 
-    maxServices: { type: Number, default: 10 },
+    maxServices: { type: Number, default: process.env.MAX_SERVICES_PER_EC2 || 10 },
 
     // Timestamps
     lastCheckedAt: Date,

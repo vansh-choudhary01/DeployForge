@@ -3,6 +3,8 @@ import Service from "../models/Service.js";
 import Project from "../models/Project.js";
 import { executeSSHCommands } from "../helpers/ssh.js";
 import { ensureDockerContainerRunning } from "../helpers/docker.js";
+import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
+import { migrateService } from "../ec2Host/ec2_consolidation.js";
 
 export async function validateRepo(req, res) {
   try {
@@ -432,6 +434,12 @@ async function WakeServiceSubDomain(service) {
   const appName = `app-${service._id}`;
   service.status = 'waking';
   await service.save();
+
+  const bestEc2 = await getBestEc2();
+  if (bestEc2.ip !== service.ec2Host?.ip) {
+    console.log(`Migrating service ${service._id} from EC2 ${service.ec2Host?.ip} to EC2 ${bestEc2.ip}`);
+    await migrateService(service, service.ec2Host, bestEc2);
+  }
 
   await executeSSHCommands([`docker start ${appName}`], [], () => {}, service.ec2Host?.ip);
 
