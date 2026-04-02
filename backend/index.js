@@ -7,9 +7,10 @@ import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
-import { getDeploymentLogs } from './workers/deploymentWorker.js';
+import { deployFromQueue, getDeploymentLogs } from './workers/deploymentWorker.js';
 import './ec2Host/ec2_monitor.js';
 import './ec2Host/sleep_monitor.js';
+import { consumeFromQueue, initializeQueue } from './RabbitMQ/queue.js';
 dotenv.config();
 
 const app = express();
@@ -22,6 +23,18 @@ export const io = new Server(server, {
         credentials: true,
     }
 });
+
+function connectRabbitMQ() {
+    initializeQueue()
+        .then(() => {
+            consumeFromQueue(deployFromQueue);
+        })
+        .catch(err => {
+            console.error('Failed to initialize RabbitMQ queue:', err);
+            process.exit(1);
+        });
+}
+connectRabbitMQ();
 
 function connectDB() {
     mongoose.connect(process.env.MONGO_URI)

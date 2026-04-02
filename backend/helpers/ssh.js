@@ -82,3 +82,17 @@ export function executeSSHCommands(commands, logs, pushLog, ec2Host = process.en
         }
     });
 }
+
+export async function waitForSSH(ip, retries = 10, delayMs = 10000) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            await executeSSHCommands(['echo SSH connection successful'], [], () => { }, ip);
+            return; // success
+        } catch (err) {
+            console.log(`SSH not ready yet, attempt ${i + 1}/${retries}. Retrying in ${delayMs / 1000}s...`);
+            await new Promise(res => setTimeout(res, delayMs));
+        }
+    }
+
+    throw new Error(`SSH never became available on ${ip} after ${retries} attempts`);
+}

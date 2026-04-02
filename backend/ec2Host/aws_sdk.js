@@ -1,5 +1,6 @@
-import { EC2Client, RunInstancesCommand, StopInstancesCommand, waitUntilInstanceRunning } from "@aws-sdk/client-ec2";
+import { DescribeInstancesCommand, EC2Client, RunInstancesCommand, StopInstancesCommand, waitUntilInstanceRunning } from "@aws-sdk/client-ec2";
 import { Ec2Registry } from "../models/ec2Registry.js";
+import { executeSSHCommands, waitForSSH } from "../helpers/ssh.js";
 
 const client = new EC2Client({ region: process.env.AWS_REGION || "ap-south-1" });
 
@@ -12,15 +13,35 @@ export async function provisionNewEC2() {
         KeyName: process.env.EC2_KEY_NAME,
         SecurityGroupIds: [process.env.EC2_SECURITY_GROUP_ID]
     });
+    // console.log('Provisioning new EC2 instance...');
+    // console.log(command);
 
     const response = await client.send(command);
-    const instance = response.Instances[0];
+    const instanceId = response.Instances[0].InstanceId;
+    // console.log('Instance created:', instanceId, '— waiting for it to run...');
 
     // wait until EC2 is running and has a public IP
     await waitUntilInstanceRunning(
         { client, maxWaitTime: 120 },
-        { InstanceIds: [instance.InstanceId] }
+        { InstanceIds: [instanceId] }
     );
+
+    const described = await client.send(new DescribeInstancesCommand({ InstanceIds: [instanceId] }));
+    const instance = described.Reservations[0].Instances[0];
+    // console.log('Instance running. Public IP:', instance.PublicIpAddress);
+
+    // wait for SSH before attempting setup
+    await waitForSSH(instance.PublicIpAddress);
+
+    try {
+        await setupInitialEC2(instance.PublicIpAddress);
+        console.log('EC2 setup completed');
+    } catch (err) {
+        console.error('Error during EC2 setup:', err);
+        // if setup fails, stop the EC2 to avoid unnecessary costs
+        await client.send(new StopInstancesCommand({ InstanceIds: [instanceId] }));
+        throw err;
+    }
 
     // save to DB
     const ec2 = await Ec2Registry.create({
@@ -29,7 +50,8 @@ export async function provisionNewEC2() {
         region: process.env.AWS_REGION || "ap-south-1",
         cpu: 0,
         ram: 0,
-        status: 'active'
+        status: 'active',
+        isInitialized: true,
     });
 
     return ec2;
@@ -42,4 +64,23 @@ export async function stopEc2(ec2) {
 
     await client.send(command);
     await Ec2Registry.updateOne({ _id: ec2._id }, { status: 'stopped' });
+}
+
+async function setupInitialEC2(ec2Ip) {
+    const commands = [
+        `sudo apt-get update -y`,
+        `sudo apt-get install -y docker.io`,
+        `sudo usermod -aG docker ubuntu`,
+        `sudo systemctl enable docker`,
+        `sudo systemctl start docker`,
+        `curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -`,
+        `sudo apt-get install -y nodejs`,
+        `docker --version`,
+        `node --version`,
+        `npm --version`
+    ];
+
+    console.log('Setting up EC2 with initial configurations...');
+    await executeSSHCommands(commands, [], (msg) => {}, ec2Ip);
+    console.log('EC2 setup completed');
 }

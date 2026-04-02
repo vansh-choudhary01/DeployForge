@@ -1,6 +1,6 @@
-import { executeSSHCommands } from "../helpers/ssh";
-import { Ec2Registry } from "../models/ec2Registry";
-import Service from "../models/Service";
+import { executeSSHCommands } from "../helpers/ssh.js";
+import { Ec2Registry } from "../models/ec2Registry.js";
+import Service from "../models/Service.js";
 
 setInterval(async () => {
     try {

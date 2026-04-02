@@ -15,8 +15,6 @@ import { consumeFromQueue } from "../RabbitMQ/queue.js";
 let activeDeployments = 0;
 const DEPLOYMENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes timeout for deployments
 
-consumeFromQueue(deployFromQueue);
-
 export async function deployFromQueue(deploymentId) {
     try {
         const deployment = await Deployment.findOneAndUpdate(
@@ -143,7 +141,7 @@ async function runDeployment(deployment, service) {
         console.error('Deployment error:', err);
         pushLog(`[${new Date().toISOString()}] ERROR: ${err.message}`);
 
-        const running = await isContainerRunning(`app-${service._id}`);
+        const running = await isContainerRunning(`app-${service._id}`, service.ec2Host?.ip);
         service.status = running ? "running" : "failed";
         deployment.status = "failed";
 
@@ -178,7 +176,7 @@ async function deployViaSSH(deployment, service, logs, pushLog) {
         port = existingPortRecord.port;
     }
 
-    const oldInstanceRunning = await isContainerRunning(appName);
+    const oldInstanceRunning = await isContainerRunning(appName, service.ec2Host?.ip);
 
     // If there is an old instance, deploy to temp instance first
     const targetContainerName = oldInstanceRunning ? tempName : appName;
@@ -299,7 +297,7 @@ DOCKERFILEEOF`);
 
         pushLog(`[${new Date().toISOString()}] Docker container started successfully: ${targetContainerName}`);
 
-        const detectedPort = await detectContainerPort(targetContainerName, pushLog);
+        const detectedPort = await detectContainerPort(targetContainerName, pushLog, service.ec2Host?.ip);
 
         if (detectedPort && detectedPort !== 3000) {
 
@@ -318,7 +316,7 @@ DOCKERFILEEOF`);
             await executeSSHCommands(restartCommands, logs, pushLog, service.ec2Host?.ip);
 
             // Ensure the restarted container is running before proceeding.
-            await ensureDockerContainerRunning(targetContainerName, pushLog);
+            await ensureDockerContainerRunning(targetContainerName, pushLog, service.ec2Host?.ip);
         }
 
         // Store deployment metadata
@@ -338,7 +336,7 @@ DOCKERFILEEOF`);
 
         if (oldInstanceRunning) {
             try {
-                await stopAndRemoveContainer(appName, pushLog);
+                await stopAndRemoveContainer(appName, pushLog, service.ec2Host?.ip);
                 const commands = [
                     `docker rename ${targetContainerName} ${appName}`,
                     `rm -rf ~/apps/${appName}`,
@@ -349,15 +347,15 @@ DOCKERFILEEOF`);
                 pushLog(`[${new Date().toISOString()}] WARNING: Blue-green swap failed: ${err.message}. Manual cleanup may be needed.`);
                 // Don't rethrow — new container IS running, deployment succeeded
             }
-            await collectContainerLogs(appName, pushLog);
+            await collectContainerLogs(appName, pushLog, service.ec2Host?.ip);
         } else {
-            await collectContainerLogs(appName, pushLog);
+            await collectContainerLogs(appName, pushLog, service.ec2Host?.ip);
         }
     } catch (err) {
         // On deploy failure, if we did blue-green attempt, remove temporary deployment and keep old running
         const stagingDir = `${appName}-new`;
 
-        await stopAndRemoveContainer(tempName, pushLog);
+        await stopAndRemoveContainer(tempName, pushLog, service.ec2Host?.ip);
         await executeSSHCommands([`rm -rf ~/apps/${stagingDir}`], [], pushLog, service.ec2Host?.ip);
 
         throw new Error(`SSH deployment failed: ${err.message}`);

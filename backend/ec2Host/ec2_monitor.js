@@ -9,7 +9,7 @@ setInterval(async () => {
         });
 
         for (const machine of machines) {
-            const stats = await getEC2Stats(machine);
+            const stats = await getEC2Stats(machine.ip);
 
             // update cpu, ram in DB
             await Ec2Registry.updateOne({ _id: machine._id }, {
@@ -23,13 +23,15 @@ setInterval(async () => {
     }
 }, 30 * 1000); // run every 30 seconds
 
-async function getEC2Stats(machine) {
+async function getEC2Stats(machineIp) {
     const commands = [
-        `top -bn1 | grep "Cpu(s)" | awk '{print $2}'` // cpu %
+        `top -bn1 | grep "Cpu(s)" | awk '{print $2}'`, // cpu %
         `free | awk '/Mem/{printf("%.0f", $3/$2*100)}'` // ram %
     ]
-    const result = await executeSSHCommands(commands, machine);
-    return { cpu: result.cpu, ram: result.ram };
+    const result = await executeSSHCommands(commands, [], (msg) => { }, machineIp);
+
+    const [cpu, ram] = result.output?.split('\n') || [0, 0];
+    return { cpu: parseFloat(cpu), ram: parseFloat(ram) };
 }
 
 // if cpu is empty then increase the cpu limit for active docer contaners ( but make sure every active have the same storage and cpu access)

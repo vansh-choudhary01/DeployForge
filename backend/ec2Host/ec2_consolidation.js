@@ -1,5 +1,5 @@
 import { executeSSHCommands } from '../helpers/ssh.js';
-import { Ec2Registry } from '../models/ec2Registry';
+import { Ec2Registry } from '../models/ec2Registry.js';
 import Service from '../models/Service.js';
 import fs from 'fs';
 import { stopEc2 } from './aws_sdk.js';
@@ -26,6 +26,8 @@ setInterval(async () => {
             const activeServicesLength = await Service.countDocuments({ ec2Host: drain._id, status: 'running' });
             if (activeServicesLength === 0) {
                 await stopEc2(drain);
+                await Ec2Registry.findByIdAndDelete(drain._id);
+                console.log(`EC2 ${drain.ip} has been stopped and removed from registry`);
             }
         }
     } catch (err) {

@@ -23,7 +23,6 @@ const projectSchema = new mongoose.Schema({
     }
 });
 
-projectSchema.index({ "projectId": 1 });
 projectSchema.index({ "user": 1 });
 
 export default mongoose.model('Project', projectSchema);

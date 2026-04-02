@@ -1,19 +1,19 @@
 import { executeSSHCommands } from "./ssh.js";
 
-export async function isContainerRunning(containerName) {
+export async function isContainerRunning(containerName, ip) {
     try {
-        const result = await executeSSHCommands([`docker ps -q -f name=^/${containerName}$`], [], () => { });
+        const result = await executeSSHCommands([`docker ps -q -f name=^/${containerName}$`], [], () => { }, ip);
         return Boolean(result.output && result.output.trim());
     } catch (err) {
         return false;
     }
 }
 
-export async function ensureDockerContainerRunning(containerName, pushLog) {
+export async function ensureDockerContainerRunning(containerName, pushLog, ip) {
     for (let attempt = 1; attempt <= 5; attempt++) {
         try {
             const stateCommands = [`docker inspect -f '{{.State.Running}}' ${containerName}`];
-            const stateResult = await executeSSHCommands(stateCommands, [], () => { });
+            const stateResult = await executeSSHCommands(stateCommands, [], () => { }, ip);
             const state = (stateResult.output || '').trim();
             pushLog(`[${new Date().toISOString()}] Container ${containerName} state: ${state}`);
 
@@ -28,17 +28,17 @@ export async function ensureDockerContainerRunning(containerName, pushLog) {
 
         await new Promise(resolve => setTimeout(resolve, 2000));
     }
-    await collectContainerLogs(containerName, pushLog); // Collect logs to help diagnose why container isn't running
+    await collectContainerLogs(containerName, pushLog, ip); // Collect logs to help diagnose why container isn't running
     throw new Error(`Container ${containerName} is not running after 5 retries`);
 }
 
-export async function detectContainerPort(containerName, pushLog) {
-    await ensureDockerContainerRunning(containerName, pushLog);
+export async function detectContainerPort(containerName, pushLog, ip) {
+    await ensureDockerContainerRunning(containerName, pushLog, ip);
 
     for (let i = 0; i < 5; i++) {
         try {
             const detectCommands = [`docker exec ${containerName} ss -tulpn`];
-            const result = await executeSSHCommands(detectCommands, [], () => { }); // no logs
+            const result = await executeSSHCommands(detectCommands, [], () => { }, ip); // no logs
             const output = result.output;
             const lines = output.split('\n');
             for (const line of lines) {
@@ -64,22 +64,22 @@ export async function detectContainerPort(containerName, pushLog) {
         pushLog(`[${new Date().toISOString()}] Port not detected yet, retrying in 2 seconds...`);
         await new Promise(resolve => setTimeout(resolve, 2000));
     }
-    await collectContainerLogs(containerName, pushLog); // Collect logs to help diagnose why container isn't running
+    await collectContainerLogs(containerName, pushLog, ip); // Collect logs to help diagnose why container isn't running
     throw new Error('Unable to detect listening port after 5 retries');
 }
 
-export async function stopAndRemoveContainer(containerName, pushLog) {
+export async function stopAndRemoveContainer(containerName, pushLog, ip) {
     try {
         await executeSSHCommands([
             `docker stop ${containerName} || true`,
             `docker rm ${containerName} || true`
-        ], [], pushLog);
+        ], [], pushLog, ip);
     } catch (err) {
         pushLog(`[${new Date().toISOString()}] Warning: could not stop/remove ${containerName}: ${err.message}`);
     }
 }
 
-export async function collectContainerLogs(appName, pushLog) {
+export async function collectContainerLogs(appName, pushLog, ip) {
     pushLog(`[${new Date().toISOString()}] Collecting logs for ${appName}...`);
     pushLog(`[${new Date().toISOString()}] Streaming logs in real-time.`);
     const commands = [
@@ -90,7 +90,8 @@ export async function collectContainerLogs(appName, pushLog) {
     await executeSSHCommands(
         commands,
         [],
-        pushLog
+        pushLog,
+        ip
     );
 
     pushLog(`[${new Date().toISOString()}] Log streaming finished`);

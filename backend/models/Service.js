@@ -115,10 +115,13 @@ const serviceSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
-    lastRequestAt: Date,
+    lastRequestAt: {
+        type: Date,
+        default: Date.now
+    },
     ec2Host: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'EC2Host'
+        ref: 'Ec2Registry'
     }
 }, {
     timestamps: true
