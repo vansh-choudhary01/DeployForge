@@ -37,7 +37,7 @@ export async function deployFromQueue(deploymentId) {
         if (service.status === "sleeping" && service.ec2Host) {
             const bestEc2 = await getBestEc2();
             await migrateService(service.ec2Host, bestEc2);
-        } else if (!service.ec2Host) {
+        } else if (!service.ec2Host && service.subdomain !== 'api') {
             const bestEc2 = await getBestEc2();
             service.ec2Host = bestEc2;;
             await service.save();
@@ -282,7 +282,7 @@ DOCKERFILEEOF`);
 
         // Start the container
         pushLog(`[${new Date().toISOString()}] Starting Docker container on port ${port}`);
-        let dockerRunCmd = `docker run -d --name ${targetContainerName} -e PORT=3000 -p ${port}:3000`;
+        let dockerRunCmd = `docker run -d --name ${targetContainerName} ${service.subdomain === 'api' ? '--network appnet' : ''} -e PORT=3000 -p ${port}:3000`;
 
         if (environmentVariables && environmentVariables.length > 0) {
             dockerRunCmd += ` --env-file .env`;
@@ -310,7 +310,7 @@ DOCKERFILEEOF`);
                 `docker stop ${targetContainerName} || true`,
                 `docker rm ${targetContainerName} || true`,
 
-                `docker run -d --name ${targetContainerName} -e PORT=${detectedPort} -p ${port}:${detectedPort}${environmentVariables && environmentVariables.length > 0 ? ' --env-file .env' : ''} ${appName}`
+                `docker run -d --name ${targetContainerName} ${service.subdomain === 'api' ? '--network appnet' : ''} -e PORT=${detectedPort} -p ${port}:${detectedPort}${environmentVariables && environmentVariables.length > 0 ? ' --env-file .env' : ''} ${appName}`
             ];
 
             await executeSSHCommands(restartCommands, logs, pushLog, service.ec2Host?.ip);
@@ -325,6 +325,11 @@ DOCKERFILEEOF`);
 
         // setup global certificate and subdomain in nginx on main backend server to proxy to the service's EC2 host and port
         // await setupSubdomain(subdomain, port, pushLog);
+
+        if (subdomain === 'api') {
+            await setupSubdomain(subdomain, port, pushLog, service.ec2Host?.ip);
+            await setupSubdomain('wildcard-proxy', port, pushLog, service.ec2Host?.ip, true); // setup proxy-only config on the service's EC2 host to forward to main backend for /api requests
+        }
         service.publicUrl = `https://${subdomain}.naaspeeti.xyz`;
 
         // Maintain stable subdomain mapping across redeploys

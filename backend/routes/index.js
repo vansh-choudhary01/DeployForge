@@ -12,6 +12,6 @@ router.use('/users', userRouter);
 router.use('/projects', authenticate, projectRouter);
 router.use('/services', authenticate, serviceRouter);
 router.use('/deployments', authenticate, deploymentRouter);
-router.use('/proxy', subdomainProxy);
+router.use('/proxy/:subdomain', subdomainProxy);
 
 export default router;
