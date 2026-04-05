@@ -1,4 +1,6 @@
 import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
+import { ensureDockerContainerRunning } from "../helpers/docker.js";
+import { executeSSHCommands } from "../helpers/ssh.js";
 import Service from "../models/Service.js";
 import { wakingUpPage, notFoundPage } from "../utils/pages.js";
 import httpProxy from 'http-proxy';
@@ -6,8 +8,6 @@ const proxy = httpProxy.createProxyServer({});
 
 async function WakeServiceSubDomain(service) {
     const appName = `app-${service._id}`;
-    service.status = 'waking';
-    await service.save();
 
     const bestEc2 = await getBestEc2();
     if (bestEc2.ip !== service.ec2Host?.ip) {
