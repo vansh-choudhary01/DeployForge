@@ -47,31 +47,38 @@ setInterval(async () => {
 
 export async function migrateService(service, fromEc2, toEc2) {
     const appName = `app-${service._id}`;
-    const keyPath = '/tmp/ec2key.pem';
-
-    // write pem key to temp file
-    fs.writeFileSync(keyPath, Buffer.from(process.env.EC2_SSH_KEY_BASE64, 'base64').toString('utf-8'));
-    fs.chmodSync(keyPath, '400');
+    const remoteKeyPath = '/tmp/ec2key.pem';
+    const pemKeyBase64 = process.env.EC2_SSH_KEY_BASE64;
 
     try {
-        // transfer image directly EC2 to EC2
+        // Step 1 - write pem key onto fromEc2 safely via base64
         await executeSSHCommands([
-            `docker save ${appName} | gzip | ssh -i ${keyPath} -o StrictHostKeyChecking=no ubuntu@${toEc2.ip} 'gunzip | docker load'`
-        ], [], () => { }, fromEc2.ip);
+            `echo '${pemKeyBase64}' | base64 -d > ${remoteKeyPath} && chmod 400 ${remoteKeyPath}`
+        ], [], () => {}, fromEc2.ip);
 
-        // cleanup drain EC2
+        // Step 2 - transfer docker image directly fromEc2 → toEc2
+        await executeSSHCommands([
+            `docker save ${appName} | gzip | ssh -i ${remoteKeyPath} -o StrictHostKeyChecking=no ubuntu@${toEc2.ip} 'gunzip | docker load'`
+        ], [], () => {}, fromEc2.ip);
+
+        // Step 3 - cleanup fromEc2
         await executeSSHCommands([
             `docker stop ${appName} || true`,
             `docker rm ${appName} || true`,
-        ], [], () => { }, fromEc2.ip);
+            `rm -f ${remoteKeyPath}`
+        ], [], () => {}, fromEc2.ip);
 
-        // update DB
+        // Step 4 - update DB
         service.ec2Host = toEc2;
         await service.save();
         await Ec2Registry.updateOne({ _id: fromEc2._id }, { $inc: { totalServices: -1 } });
         await Ec2Registry.updateOne({ _id: toEc2._id }, { $inc: { totalServices: 1 } });
-    } finally {
-        // always delete pem key even if error occurs
-        fs.unlinkSync(keyPath);
+
+        console.log(`Migrated ${appName} from ${fromEc2.ip} to ${toEc2.ip}`);
+
+    } catch (err) {
+        // cleanup key from fromEc2 on failure
+        await executeSSHCommands([`rm -f ${remoteKeyPath}`], [], () => {}, fromEc2.ip).catch(() => {});
+        throw err;
     }
 }
