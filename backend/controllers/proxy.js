@@ -1,6 +1,8 @@
 import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
 import Service from "../models/Service.js";
 import { wakingUpPage, notFoundPage } from "../utils/pages.js";
+import httpProxy from 'http-proxy';
+const proxy = httpProxy.createProxyServer({});
 
 async function WakeServiceSubDomain(service) {
     const appName = `app-${service._id}`;
@@ -40,8 +42,12 @@ export async function subdomainProxy(req, res) {
         }
 
         // forward the request to the service's EC2 host
-        const targetUrl = `http://${service.ec2Host.ip}:${service.port}${req.path}`;
-        res.redirect(targetUrl);
+        const targetUrl = `http://${service.ec2Host.ip}:${service.port}`;
+        
+        proxy.web(req, res, { target: targetUrl }, (err) => {
+            console.error('Proxy error', err);
+            res.status(502).send("Bad Gateway");
+        });
     } catch (err) {
         console.error('Proxy error', err);
         res.status(500).send("Internal Server Error");
