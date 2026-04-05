@@ -19,6 +19,7 @@ setInterval(async () => {
             console.log(`Draining EC2 ${drain.ip} and moving workloads to ${target.ip}`);
 
             const services = await Service.find({ ec2Host: drain._id, status: 'sleeping' });
+            console.log(`Found ${services.length} sleeping services to migrate from ${drain.ip} to ${target.ip}`);
             for (const service of services) {
                 const freshTarget = await Ec2Registry.findById(target._id); // re-fetch target to get latest stats
                 if (freshTarget.cpu > 75 || freshTarget.ram > 75) {
@@ -26,20 +27,23 @@ setInterval(async () => {
                     break; // stop migration if target becomes overloaded
                 }
                 await migrateService(service, drain, target);
+                console.log(`Migrated service ${service._id} from EC2 ${drain.ip} to EC2 ${target.ip}`);
             }
 
             const activeServicesLength = await Service.countDocuments({ ec2Host: drain._id, status: 'running' });
+            console.log(`After migration, EC2 ${drain.ip} has ${activeServicesLength} active services`);
             if (activeServicesLength === 0) {
                 await Ec2Registry.updateOne({ _id: drain._id }, { status: 'offline' }); // mark as offline before stopping to avoid new deployments
                 await stopEc2(drain);
                 await Ec2Registry.findByIdAndDelete(drain._id);
                 console.log(`EC2 ${drain.ip} has been stopped and removed from registry`);
             }
+            console.log(`Finished consolidation check. Underloaded EC2s: ${underloaded.length}, Drained EC2: ${drain.ip}, Target EC2: ${target.ip}`);
         }
     } catch (err) {
         console.error('Error during EC2 consolidation:', err);
     }
-}, 5 * 60 * 1000); // Check every 5 minutes
+}, 60 * 1000); // Check every 5 minutes
 
 export async function migrateService(service, fromEc2, toEc2) {
     const appName = `app-${service._id}`;
@@ -47,40 +51,21 @@ export async function migrateService(service, fromEc2, toEc2) {
 
     // write pem key to temp file
     fs.writeFileSync(keyPath, Buffer.from(process.env.EC2_SSH_KEY_BASE64, 'base64').toString('utf-8'));
-    await executeSSHCommands([`chmod 400 ${keyPath}`], [], () => { });
+    fs.chmodSync(keyPath, '400');
 
     try {
-        // Step 1 - save image on drain EC2
+        // transfer image directly EC2 to EC2
         await executeSSHCommands([
-            `docker save ${appName} | gzip > /tmp/${appName}.tar.gz`
+            `docker save ${appName} | gzip | ssh -i ${keyPath} -o StrictHostKeyChecking=no ubuntu@${toEc2.ip} 'gunzip | docker load'`
         ], [], () => { }, fromEc2.ip);
 
-        // Step 2 - download from drain EC2 to backend
+        // cleanup drain EC2
         await executeSSHCommands([
-            `scp -i ${keyPath} -o StrictHostKeyChecking=no ubuntu@${fromEc2.ip}:/tmp/${appName}.tar.gz /tmp/${appName}.tar.gz`
-        ], [], () => { });
-
-        // Step 3 - upload from backend to target EC2
-        await executeSSHCommands([
-            `scp -i ${keyPath} -o StrictHostKeyChecking=no /tmp/${appName}.tar.gz ubuntu@${toEc2.ip}:/tmp/${appName}.tar.gz`
-        ], [], () => { });
-
-        // Step 4 - load image on target EC2
-        await executeSSHCommands([
-            `docker load < /tmp/${appName}.tar.gz`,
-        ], [], () => { }, toEc2.ip);
-
-        // Step 5 - cleanup drain EC2
-        await executeSSHCommands([
-            `docker stop ${appName}`,
-            `docker rm ${appName}`,
-            `rm /tmp/${appName}.tar.gz`
+            `docker stop ${appName} || true`,
+            `docker rm ${appName} || true`,
         ], [], () => { }, fromEc2.ip);
 
-        // Step 6 - cleanup backend
-        fs.unlinkSync(`/tmp/${appName}.tar.gz`);
-
-        // Step 7 - update DB
+        // update DB
         service.ec2Host = toEc2;
         await service.save();
         await Ec2Registry.updateOne({ _id: fromEc2._id }, { $inc: { totalServices: -1 } });
