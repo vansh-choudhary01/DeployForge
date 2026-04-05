@@ -19,6 +19,16 @@ export async function provisionNewEC2() {
     const response = await client.send(command);
     const instanceId = response.Instances[0].InstanceId;
     // console.log('Instance created:', instanceId, '— waiting for it to run...');
+        // save to DB
+    const ec2 = await Ec2Registry.create({
+        ip: 'pending', // will update with actual IP once it's running
+        instanceId: instanceId,
+        region: process.env.AWS_REGION || "ap-south-1",
+        cpu: 0,
+        ram: 0,
+        status: 'waking',
+        isInitialized: false,
+    });
 
     // wait until EC2 is running and has a public IP
     await waitUntilInstanceRunning(
@@ -44,15 +54,10 @@ export async function provisionNewEC2() {
     }
 
     // save to DB
-    const ec2 = await Ec2Registry.create({
-        ip: instance.PublicIpAddress,
-        instanceId: instance.InstanceId,
-        region: process.env.AWS_REGION || "ap-south-1",
-        cpu: 0,
-        ram: 0,
-        status: 'active',
-        isInitialized: true,
-    });
+    ec2.ip = instance.PublicIpAddress;
+    ec2.status = 'active';
+    ec2.isInitialized = true;
+    await ec2.save();
 
     return ec2;
 }

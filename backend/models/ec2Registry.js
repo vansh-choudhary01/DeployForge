@@ -12,7 +12,7 @@ const ec2RegistrySchema = new mongoose.Schema({
 
     status: {
         type: String,
-        enum: ['active', 'full', 'offline', 'stopped'],
+        enum: ['active', 'full', 'offline', 'stopped', 'waking'],
         default: 'active',
     },
     isInitialized: { type: Boolean, default: false },
