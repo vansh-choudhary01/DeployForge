@@ -1,5 +1,5 @@
 import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
-import { ensureDockerContainerRunning } from "../helpers/docker.js";
+import { isContainerRunning } from "../helpers/docker.js";
 import { executeSSHCommands } from "../helpers/ssh.js";
 import Service from "../models/Service.js";
 import { wakingUpPage, notFoundPage } from "../utils/pages.js";
@@ -7,22 +7,32 @@ import httpProxy from 'http-proxy';
 const proxy = httpProxy.createProxyServer({});
 
 async function WakeServiceSubDomain(service) {
-    const appName = `app-${service._id}`;
+    try {
+        const appName = `app-${service._id}`;
 
-    const bestEc2 = await getBestEc2();
-    if (bestEc2.ip !== service.ec2Host?.ip) {
-        console.log(`Migrating service ${service._id} from EC2 ${service.ec2Host?.ip} to EC2 ${bestEc2.ip}`);
-        await migrateService(service, service.ec2Host, bestEc2);
+        const bestEc2 = await getBestEc2();
+        if (bestEc2.ip !== service.ec2Host?.ip) {
+            console.log(`Migrating service ${service._id} from EC2 ${service.ec2Host?.ip} to EC2 ${bestEc2.ip}`);
+            await migrateService(service, service.ec2Host, bestEc2);
+        }
+
+        await executeSSHCommands([`docker start ${appName}`], [], () => { }, service.ec2Host?.ip);
+
+        // wait for container to start
+        for (let i = 0; i < 20; i++) {
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            if (await isContainerRunning(appName, service.ec2Host?.ip)) {
+                service.status = 'running';
+                await service.save();
+                return true;
+            }
+        }
+
+        return false;
+    } catch (err) {
+        console.error(`Error waking service ${service._id}:`, err);
+        return false;
     }
-
-    await executeSSHCommands([`docker start ${appName}`], [], () => { }, service.ec2Host?.ip);
-
-    // wait for container to start
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    await ensureDockerContainerRunning(appName, () => { });
-
-    service.status = 'running';
-    await service.save();
 }
 
 export async function subdomainProxy(req, res) {
@@ -43,7 +53,7 @@ export async function subdomainProxy(req, res) {
 
         // forward the request to the service's EC2 host
         const targetUrl = `http://${service.ec2Host.ip}:${service.port}`;
-        
+
         proxy.web(req, res, { target: targetUrl }, (err) => {
             console.error('Proxy error', err);
             res.status(502).send("Bad Gateway");
