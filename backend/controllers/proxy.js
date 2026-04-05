@@ -1,3 +1,4 @@
+import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
 import Service from "../models/Service.js";
 import { wakingUpPage, notFoundPage } from "../utils/pages.js";
 

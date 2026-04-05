@@ -81,5 +81,7 @@ NGINXEOF`,
 
     await executeSSHCommands(commands, [], pushLog, machineIp);
 
-    pushLog(`[${new Date().toISOString()}] Subdomain ready: https://${subdomain}.naaspeeti.xyz`);
+    if (!proxyOnly) {
+        pushLog(`[${new Date().toISOString()}] Subdomain ready: https://${subdomain}.naaspeeti.xyz`);
+    }
 }
