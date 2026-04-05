@@ -10,6 +10,7 @@ import { setupSubdomain } from "../helpers/nginx.js";
 import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
 import { migrateService } from "../ec2Host/ec2_consolidation.js";
 import { consumeFromQueue } from "../RabbitMQ/queue.js";
+import { Ec2Registry } from "../models/ec2Registry.js";
 
 // Start deployment worker - polls every 2 seconds for queued deployments
 let activeDeployments = 0;
@@ -160,6 +161,9 @@ async function runDeployment(deployment, service) {
     // Save changes
     await service.save();
     await deployment.save();
+
+    const totalServices = await Service.countDocuments({ ec2Host: service.ec2Host?._id, status: 'running' });
+    await service.ec2Host ? Ec2Registry.updateOne({ _id: service.ec2Host._id }, { totalServices }) : null;
 }
 
 async function deployViaSSH(deployment, service, logs, pushLog) {
@@ -205,6 +209,7 @@ async function deployViaSSH(deployment, service, logs, pushLog) {
         // Build commands to execute on EC2
         const commands = [
             `docker container prune -f`, // Clean up any stopped containers to free resources before deployment
+            `rm -rf ~/apps`, // Clean up old app folders to free disk space before deployment (it's just code and it's going to be re-cloned or reuse from the container, so safe to remove)
             // Ensure base directory exists
             `mkdir -p ~/apps`, // create base directory if it doesn't exist
             `cd ~/apps`,
@@ -352,10 +357,8 @@ DOCKERFILEEOF`);
                 pushLog(`[${new Date().toISOString()}] WARNING: Blue-green swap failed: ${err.message}. Manual cleanup may be needed.`);
                 // Don't rethrow — new container IS running, deployment succeeded
             }
-            await collectContainerLogs(appName, pushLog, service.ec2Host?.ip);
-        } else {
-            await collectContainerLogs(appName, pushLog, service.ec2Host?.ip);
-        }
+        } 
+        await collectContainerLogs(appName, pushLog, service.ec2Host?.ip);
     } catch (err) {
         // On deploy failure, if we did blue-green attempt, remove temporary deployment and keep old running
         const stagingDir = `${appName}-new`;

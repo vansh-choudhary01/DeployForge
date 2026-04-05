@@ -8,7 +8,7 @@ setInterval(async () => {
     try {
         const machines = await Ec2Registry.find({ status: 'active' });
 
-        // find underloaded EC2s (cpu < 20%, ram < 20%)
+        // find underloaded EC2s with 2 or fewer services and low CPU usage
         const underloaded = machines.filter(m => m.totalServices <= 2 && m.cpu < 20);
 
         if (underloaded.length > 1) {

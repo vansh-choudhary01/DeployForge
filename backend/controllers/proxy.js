@@ -1,6 +1,7 @@
 import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
-import { isContainerRunning } from "../helpers/docker.js";
+import { ensureDockerContainerRunning } from "../helpers/docker.js";
 import { executeSSHCommands } from "../helpers/ssh.js";
+import { Ec2Registry } from "../models/ec2Registry.js";
 import Service from "../models/Service.js";
 import { wakingUpPage, notFoundPage } from "../utils/pages.js";
 import httpProxy from 'http-proxy';
@@ -19,13 +20,13 @@ async function WakeServiceSubDomain(service) {
         await executeSSHCommands([`docker start ${appName}`], [], () => { }, service.ec2Host?.ip);
 
         // wait for container to start
-        for (let i = 0; i < 20; i++) {
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            if (await isContainerRunning(appName, service.ec2Host?.ip)) {
-                service.status = 'running';
-                await service.save();
-                return true;
-            }
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        if (await ensureDockerContainerRunning(appName, () => {}, service.ec2Host?.ip)) {
+            service.status = 'running';
+            await service.save();
+            const totalServices = await Service.countDocuments({ ec2Host: service.ec2Host?._id, status: 'running' });
+            await Ec2Registry.updateOne({ _id: service.ec2Host }, { totalServices });
+            return true;
         }
 
         return false;
