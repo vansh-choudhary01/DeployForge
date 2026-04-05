@@ -12,6 +12,7 @@ setInterval(async () => {
         }).populate('ec2Host');
 
         for (const service of idleServices) {
+            if (service.subdomain === 'api') continue; // never sleep the API service
             await sleepService(service);
         }
     } catch (err) {
