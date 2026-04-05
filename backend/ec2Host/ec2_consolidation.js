@@ -9,7 +9,7 @@ setInterval(async () => {
         const machines = await Ec2Registry.find({ status: 'active' });
 
         // find underloaded EC2s (cpu < 20%, ram < 20%)
-        const underloaded = machines.filter(m => m.cpu < 20 && m.ram < 20);
+        const underloaded = machines.filter(m => m.totalServices <= 2 && m.cpu < 20);
 
         if (underloaded.length > 1) {
             const drain = underloaded[0]; // pick the first underloaded machine to drain
@@ -20,11 +20,17 @@ setInterval(async () => {
 
             const services = await Service.find({ ec2Host: drain._id, status: 'sleeping' });
             for (const service of services) {
+                const freshTarget = await Ec2Registry.findById(target._id); // re-fetch target to get latest stats
+                if (freshTarget.cpu > 75 || freshTarget.ram > 75) {
+                    console.log(`Target EC2 ${target.ip} is now overloaded, stopping migration`);
+                    break; // stop migration if target becomes overloaded
+                }
                 await migrateService(service, drain, target);
             }
 
             const activeServicesLength = await Service.countDocuments({ ec2Host: drain._id, status: 'running' });
             if (activeServicesLength === 0) {
+                await Ec2Registry.updateOne({ _id: drain._id }, { status: 'offline' }); // mark as offline before stopping to avoid new deployments
                 await stopEc2(drain);
                 await Ec2Registry.findByIdAndDelete(drain._id);
                 console.log(`EC2 ${drain.ip} has been stopped and removed from registry`);

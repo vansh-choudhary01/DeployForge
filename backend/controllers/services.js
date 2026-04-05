@@ -1,10 +1,7 @@
 import Deployment from "../models/Deployment.js";
 import Service from "../models/Service.js";
 import Project from "../models/Project.js";
-import { executeSSHCommands } from "../helpers/ssh.js";
-import { ensureDockerContainerRunning } from "../helpers/docker.js";
-import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
-import { migrateService } from "../ec2Host/ec2_consolidation.js";
+import { stopAndRemoveContainer } from "../helpers/docker.js";
 import { sendToQueue } from "../RabbitMQ/queue.js";
 
 export async function validateRepo(req, res) {
@@ -245,6 +242,8 @@ export async function deleteService(req, res) {
 
     await Deployment.deleteMany({ service: id });
 
+    await stopAndRemoveContainer(`app-${id}`, () => {}, service.ec2Host?.ip);
+
     await Service.findByIdAndDelete(id);
 
     return res.json({
@@ -315,7 +314,7 @@ export async function setServiceEnv(req, res) {
     const updatedService = await Service.findOneAndUpdate(
       { _id: id, 'environmentVariables.key': key },
       { $set: { 'environmentVariables.$.value': value } },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     let resultService;

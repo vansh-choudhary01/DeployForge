@@ -336,7 +336,7 @@ DOCKERFILEEOF`);
         await UsedPortAndSubDomain.findOneAndUpdate(
             { subdomain },
             { subdomain, port, deployment: deployment._id },
-            { upsert: true, new: true }
+            { upsert: true }
         );
 
         if (oldInstanceRunning) {
