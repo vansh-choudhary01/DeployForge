@@ -15,6 +15,7 @@ setInterval(async () => {
             await Ec2Registry.updateOne({ _id: machine._id }, {
                 cpu: stats.cpu,
                 ram: stats.ram,
+                disk: stats.disk,
                 status: stats.cpu > 80 || stats.ram > 80 ? 'full' : 'active'
             });
         }
@@ -25,13 +26,20 @@ setInterval(async () => {
 
 async function getEC2Stats(machineIp) {
     const commands = [
-        `top -bn1 | grep "Cpu(s)" | awk '{print $2}'`, // cpu %
-        `free | awk '/Mem/{printf("%.0f", $3/$2*100)}'` // ram %
-    ]
-    const result = await executeSSHCommands(commands, [], (msg) => { }, machineIp);
+        `top -bn2 | grep "Cpu(s)" | tail -1 | awk '{print $2}' && echo "---"`,
+        `free | awk '/Mem/{printf("%.0f", $3/$2*100)}' && echo "---"`,
+        `df / | awk 'NR==2{print $5}' | tr -d '%' && echo "---"`
+    ];
 
-    const [cpu, ram] = result.output?.split('\n') || [0, 0];
-    return { cpu: parseFloat(cpu), ram: parseFloat(ram) };
+    const result = await executeSSHCommands(commands, [], () => {}, machineIp);
+    
+    const sections = result.output.split('---\n').map(s => s.trim()).filter(Boolean);
+    
+    const cpu = parseFloat(sections[0]) || 0;
+    const ram = parseFloat(sections[1]) || 0;
+    const disk = parseFloat(sections[2]) || 0;
+
+    return { cpu, ram, disk };
 }
 
 // if cpu is empty then increase the cpu limit for active docer contaners ( but make sure every active have the same storage and cpu access)

@@ -20,7 +20,7 @@ export async function getBestEc2() {
     }
 
 
-    if (machine && machine.cpu < 80 && machine.ram < 80) {
+    if (machine && machine.cpu < 80 && machine.ram < 80 && machine.disk < 70) {
         return machine;
     }
     if (machine) {
