@@ -5,7 +5,7 @@ setInterval(async () => {
     try {
         // first will get the all ec2
         const machines = await Ec2Registry.find({
-            status: { $ne: "offline" }
+            status: { $nin: ["offline", "waking"] }
         });
 
         for (const machine of machines) {

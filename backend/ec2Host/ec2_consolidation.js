@@ -43,7 +43,7 @@ setInterval(async () => {
     } catch (err) {
         console.error('Error during EC2 consolidation:', err);
     }
-}, 60 * 1000); // Check every 5 minutes
+}, 5 * 60 * 1000); // Check every 5 minutes
 
 export async function migrateService(service, fromEc2, toEc2) {
     const appName = `app-${service._id}`;

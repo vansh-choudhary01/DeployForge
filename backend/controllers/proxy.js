@@ -1,6 +1,6 @@
 import { migrateService } from "../ec2Host/ec2_consolidation.js";
 import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
-import { ensureDockerContainerRunning } from "../helpers/docker.js";
+import { isContainerRunning } from "../helpers/docker.js";
 import { executeSSHCommands } from "../helpers/ssh.js";
 import { Ec2Registry } from "../models/ec2Registry.js";
 import Service from "../models/Service.js";
@@ -22,7 +22,7 @@ async function WakeServiceSubDomain(service) {
 
         // wait for container to start
         await new Promise(resolve => setTimeout(resolve, 5000));
-        if (await ensureDockerContainerRunning(appName, () => {}, service.ec2Host?.ip)) {
+        if (await isContainerRunning(appName, service.ec2Host?.ip)) {
             service.status = 'running';
             await service.save();
             const totalServices = await Service.countDocuments({ ec2Host: service.ec2Host?._id, status: 'running' });
