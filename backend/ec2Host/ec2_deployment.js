@@ -2,7 +2,10 @@ import { Ec2Registry } from "../models/ec2Registry.js";
 import { provisionNewEC2 } from "./aws_sdk.js";
 
 export async function getBestEc2() {
-    let machine = await Ec2Registry.findOne({ status: 'active', totalServices: { $lt: process.env.MAX_SERVICES_PER_EC2 } }).sort({ totalServices: 1, cpu: 1, ram: 1 });
+    let machine = await Ec2Registry.findOne({
+        status: 'active',
+        $expr: { $lt: ["$totalServices", "$maxServices"] }
+    }).sort({ totalServices: 1, cpu: 1, ram: 1 });
     const newMachine = await Ec2Registry.findOne({ status: 'waking' }).sort({ createdAt: 1 });
     if (!machine && newMachine) {
         console.log(`Found waking EC2 ${newMachine.ip}, waiting for it to be ready...`);
