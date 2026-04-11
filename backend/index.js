@@ -11,6 +11,8 @@ import { deployFromQueue, getDeploymentLogs } from './workers/deploymentWorker.j
 import './ec2Host/ec2_monitor.js';
 import './ec2Host/sleep_monitor.js';
 import { consumeFromQueue, initializeQueue } from './RabbitMQ/queue.js';
+import { consumeFromQueue as consumeWakeupQueue, initializeQueue as initializeWakeupQueue } from './RabbitMQ/wakeupQueue.js';
+import { WakeServiceSubDomain } from './controllers/proxy.js';
 dotenv.config();
 
 const app = express();
@@ -31,6 +33,14 @@ function connectRabbitMQ() {
         })
         .catch(err => {
             console.error('Failed to initialize RabbitMQ queue:', err);
+            process.exit(1);
+        });
+    initializeWakeupQueue()
+        .then(() => {
+            consumeWakeupQueue(WakeServiceSubDomain);
+        })
+        .catch(err => {
+            console.error('Failed to initialize RabbitMQ wakeup queue:', err);
             process.exit(1);
         });
 }

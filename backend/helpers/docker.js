@@ -84,7 +84,7 @@ export async function collectContainerLogs(appName, pushLog, ip) {
     pushLog(`[${new Date().toISOString()}] Streaming logs in real-time.`);
     const commands = [
         `(timeout 12 docker logs -f --tail 200 ${appName} || true)`,
-        `docker image prune -af`, // clean unused images in same connection
+        // `docker image prune -af`, // clean unused images in same connection
     ]; // Stream logs for 12 seconds to capture startup logs
 
     await executeSSHCommands(

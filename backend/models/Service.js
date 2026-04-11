@@ -107,6 +107,9 @@ const serviceSchema = new mongoose.Schema({
     port: {
         type: Number
     },
+    servicePort: {
+        type: Number
+    },
     currentDeployment: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Deployment"

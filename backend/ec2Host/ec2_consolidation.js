@@ -3,17 +3,18 @@ import { Ec2Registry } from '../models/ec2Registry.js';
 import Service from '../models/Service.js';
 import fs from 'fs';
 import { stopEc2 } from './aws_sdk.js';
+import { detectContainerPort } from '../helpers/docker.js';
 
 setInterval(async () => {
     try {
-        const machines = await Ec2Registry.find({ status: 'active' });
+        const machines = await Ec2Registry.find({ status: 'active' }).sort({ totalServices: 1 });
 
         // find underloaded EC2s with 2 or fewer services and low CPU usage
         const underloaded = machines.filter(m => m.totalServices <= 2 && m.cpu < 20);
 
         if (underloaded.length > 1) {
-            const drain = underloaded[0]; // pick the first underloaded machine to drain
-            const target = underloaded[1]; // pick the next underloaded machine to move workloads to
+            const drain = underloaded[1]; // pick the first underloaded machine to drain
+            const target = underloaded[0]; // pick the next underloaded machine to move workloads to
 
             // move all workloads from drain to target 
             console.log(`Draining EC2 ${drain.ip} and moving workloads to ${target.ip}`);
@@ -53,20 +54,20 @@ export async function migrateService(service, fromEc2, toEc2) {
     try {
         // Step 1 - write pem key onto fromEc2 safely via base64
         await executeSSHCommands([
-            `echo '${pemKeyBase64}' | base64 -d > ${remoteKeyPath} && chmod 400 ${remoteKeyPath}`
-        ], [], () => {}, fromEc2.ip);
+            `sudo rm -f ${remoteKeyPath} && echo '${pemKeyBase64}' | base64 -d | sudo tee ${remoteKeyPath} > /dev/null && sudo chmod 400 ${remoteKeyPath} && sudo chown ubuntu:ubuntu ${remoteKeyPath}`
+        ], [], () => { }, fromEc2.ip);
 
         // Step 2 - transfer docker image directly fromEc2 → toEc2
         await executeSSHCommands([
             `docker save ${appName} | gzip | ssh -i ${remoteKeyPath} -o StrictHostKeyChecking=no ubuntu@${toEc2.ip} 'gunzip | docker load'`
-        ], [], () => {}, fromEc2.ip);
+        ], [], () => { }, fromEc2.ip);
 
         // Step 3 - cleanup fromEc2
         await executeSSHCommands([
             `docker stop ${appName} || true`,
             `docker rm ${appName} || true`,
             `rm -f ${remoteKeyPath}`
-        ], [], () => {}, fromEc2.ip);
+        ], [], () => { }, fromEc2.ip);
 
         // Step 4 - update DB
         service.ec2Host = toEc2;
@@ -76,9 +77,42 @@ export async function migrateService(service, fromEc2, toEc2) {
 
         console.log(`Migrated ${appName} from ${fromEc2.ip} to ${toEc2.ip}`);
 
+        // Step 5 - start container on toEc2
+        await startContainer(service, toEc2);
+
     } catch (err) {
+        console.error(`Error migrating service ${service._id} from EC2 ${fromEc2.ip} to EC2 ${toEc2.ip}:`, err);
         // cleanup key from fromEc2 on failure
-        await executeSSHCommands([`rm -f ${remoteKeyPath}`], [], () => {}, fromEc2.ip).catch(() => {});
+        await executeSSHCommands([`rm -f ${remoteKeyPath}`], [], () => { }, fromEc2.ip).catch(() => { });
         throw err;
+    }
+}
+
+export async function startContainer(service, toEc2) {
+    const appName = `app-${service._id}`;
+    let dockerRunCmd = `docker run -d --name app-${service._id} -e PORT=3000 -p ${service.port}:${service.servicePort || '3000'}`;
+
+    if (service.environmentVariables && service.environmentVariables.length > 0) {
+        const envCommands = service.environmentVariables.map(ev => `-e ${ev.key}='${ev.value}'`).join(' ');
+        dockerRunCmd += ` ${envCommands}`;
+    }
+
+    dockerRunCmd += ` ${appName}`;
+
+    const dockerRunCommands = [
+        `docker stop ${appName} || true`,
+        `docker rm ${appName} || true`,
+        dockerRunCmd
+    ]
+
+    // docker run -d --name ${targetContainerName} ${service.subdomain === 'api' ? '--network appnet' : ''} -e PORT=3000 -p ${port}:3000
+    await executeSSHCommands(dockerRunCommands, [], () => {}, toEc2.ip);
+
+    const detectedPort = await detectContainerPort(appName, () => {}, toEc2.ip);
+    if (detectedPort !== service.servicePort) {
+        console.warn(`Warning: Detected port ${detectedPort} does not match expected port ${service.servicePort} for service ${service._id}`);
+        service.servicePort = detectedPort;
+        await service.save();
+        return startContainer(service, toEc2); // restart with correct port mapping
     }
 }

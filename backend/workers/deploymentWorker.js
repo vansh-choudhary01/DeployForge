@@ -42,6 +42,9 @@ export async function deployFromQueue(deploymentId) {
             const bestEc2 = await getBestEc2();
             service.ec2Host = bestEc2;;
             await service.save();
+            const totalServices = await Service.countDocuments({ ec2Host: bestEc2._id });
+            bestEc2.totalServices = totalServices;
+            await bestEc2.save();
         }
 
         activeDeployments++;
@@ -161,9 +164,6 @@ async function runDeployment(deployment, service) {
     // Save changes
     await service.save();
     await deployment.save();
-
-    const totalServices = await Service.countDocuments({ ec2Host: service.ec2Host?._id, status: 'running' });
-    await service.ec2Host ? Ec2Registry.updateOne({ _id: service.ec2Host._id }, { totalServices }) : null;
 }
 
 async function deployViaSSH(deployment, service, logs, pushLog) {
@@ -322,6 +322,7 @@ DOCKERFILEEOF`);
 
             // Ensure the restarted container is running before proceeding.
             await ensureDockerContainerRunning(targetContainerName, pushLog, service.ec2Host?.ip);
+            service.servicePort = detectedPort; // Store the actual port the service is listening on
         }
 
         // Store deployment metadata

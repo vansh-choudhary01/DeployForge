@@ -5,6 +5,7 @@ import { executeSSHCommands, waitForSSH } from "../helpers/ssh.js";
 const client = new EC2Client({ region: process.env.AWS_REGION || "ap-south-1" });
 
 export async function provisionNewEC2() {
+    console.log('Provisioning new EC2 instance...');
     const command = new RunInstancesCommand({
         ImageId: process.env.EC2_AMI_ID,
         InstanceType: process.env.EC2_INSTANCE_TYPE,
@@ -21,7 +22,7 @@ export async function provisionNewEC2() {
     // console.log('Instance created:', instanceId, '— waiting for it to run...');
         // save to DB
     const ec2 = await Ec2Registry.create({
-        ip: 'pending', // will update with actual IP once it's running
+        ip: null, // will update with actual IP once it's running
         instanceId: instanceId,
         region: process.env.AWS_REGION || "ap-south-1",
         cpu: 0,
@@ -45,7 +46,6 @@ export async function provisionNewEC2() {
 
     try {
         await setupInitialEC2(instance.PublicIpAddress);
-        console.log('EC2 setup completed');
     } catch (err) {
         console.error('Error during EC2 setup:', err);
         // if setup fails, stop the EC2 to avoid unnecessary costs

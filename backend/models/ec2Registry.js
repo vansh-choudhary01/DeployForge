@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 const ec2RegistrySchema = new mongoose.Schema({
-    ip: { type: String, required: true, unique: true },
+    ip: { type: String, unique: true, sparse: true },
     region: { type: String, required: true },
     instanceId: { type: String, required: true, unique: true },
 
