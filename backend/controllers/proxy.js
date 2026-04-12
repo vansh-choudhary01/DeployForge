@@ -39,6 +39,11 @@ export async function WakeServiceSubDomain({type, serviceId}) {
         return false;
     } catch (err) {
         console.error(`Error waking service ${serviceId}:`, err);
+        try {
+            await Service.findByIdAndUpdate(serviceId, { status: 'sleeping' });
+        } catch (updateErr) {
+            console.error(`Error updating service ${serviceId} status to sleeping:`, updateErr);
+        }
         return false;
     }
 }
@@ -55,8 +60,13 @@ export async function subdomainProxy(req, res) {
         // sleeping? wake it
         if (service.status === 'sleeping') {
             // WakeServiceSubDomain(service);
-            sendToQueue({ type: 'wake', serviceId: service._id });
+            service.status = 'waking';
+            await service.save();
 
+            sendToQueue({ type: 'wake', serviceId: service._id });
+            
+            return res.send(wakingUpPage(subdomain));
+        } else if (service.status === 'waking') {
             return res.send(wakingUpPage(subdomain));
         }
 

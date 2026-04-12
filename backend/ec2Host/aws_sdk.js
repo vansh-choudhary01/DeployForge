@@ -1,4 +1,4 @@
-import { DescribeInstancesCommand, EC2Client, RunInstancesCommand, StopInstancesCommand, waitUntilInstanceRunning } from "@aws-sdk/client-ec2";
+import { DescribeInstancesCommand, EC2Client, RunInstancesCommand, StopInstancesCommand, waitUntilInstanceRunning, TerminateInstancesCommand } from "@aws-sdk/client-ec2";
 import { Ec2Registry } from "../models/ec2Registry.js";
 import { executeSSHCommands, waitForSSH } from "../helpers/ssh.js";
 
@@ -50,6 +50,8 @@ export async function provisionNewEC2() {
         console.error('Error during EC2 setup:', err);
         // if setup fails, stop the EC2 to avoid unnecessary costs
         await client.send(new StopInstancesCommand({ InstanceIds: [instanceId] }));
+        ec2.status = 'stopped';
+        await ec2.save();
         throw err;
     }
 
@@ -69,6 +71,15 @@ export async function stopEc2(ec2) {
 
     await client.send(command);
     await Ec2Registry.updateOne({ _id: ec2._id }, { status: 'stopped' });
+}
+
+export async function terminateEc2(ec2) {
+    const command = new TerminateInstancesCommand({
+        InstanceIds: [ec2.instanceId]
+    });
+
+    await client.send(command);
+    await Ec2Registry.findByIdAndDelete(ec2._id);
 }
 
 async function setupInitialEC2(ec2Ip) {

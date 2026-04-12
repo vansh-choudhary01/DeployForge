@@ -18,4 +18,6 @@ const portSchema = new mongoose.Schema({
     timestamps: true
 });
 
+portSchema.index({ subdomain: 1, port: 1 });
+
 export default mongoose.model('Port', portSchema);

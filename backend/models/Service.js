@@ -89,7 +89,7 @@ const serviceSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'building', 'deploying', 'running', 'sleeping', 'failed', 'stopped'],
+        enum: ['pending', 'building', 'deploying', 'running', 'sleeping', 'failed', 'stopped', 'waking'],
         default: 'pending'
     },
     logs: [{

@@ -9,11 +9,8 @@ import { executeSSHCommands } from "../helpers/ssh.js";
 import { setupSubdomain } from "../helpers/nginx.js";
 import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
 import { migrateService } from "../ec2Host/ec2_consolidation.js";
-import { consumeFromQueue } from "../RabbitMQ/queue.js";
-import { Ec2Registry } from "../models/ec2Registry.js";
 
 // Start deployment worker - polls every 2 seconds for queued deployments
-let activeDeployments = 0;
 const DEPLOYMENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes timeout for deployments
 
 export async function deployFromQueue(deploymentId) {
@@ -47,10 +44,8 @@ export async function deployFromQueue(deploymentId) {
             await bestEc2.save();
         }
 
-        activeDeployments++;
-        runDeployment(deployment, service).finally(() => {
-            activeDeployments--;
-        }).catch(err => console.error('Unhandled deployment error:', err));
+        await runDeployment(deployment, service)
+            .catch(err => console.error('Unhandled deployment error:', err));
     } catch (err) {
         console.error('Worker error:', err);
     }

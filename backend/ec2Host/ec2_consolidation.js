@@ -1,20 +1,16 @@
 import { executeSSHCommands } from '../helpers/ssh.js';
 import { Ec2Registry } from '../models/ec2Registry.js';
 import Service from '../models/Service.js';
-import fs from 'fs';
-import { stopEc2 } from './aws_sdk.js';
+import { terminateEc2 } from './aws_sdk.js';
 import { detectContainerPort } from '../helpers/docker.js';
 
 setInterval(async () => {
     try {
-        const machines = await Ec2Registry.find({ status: 'active' }).sort({ totalServices: 1 });
+        const machines = await Ec2Registry.find({ status: 'active' }).sort({ maxServices: -1, totalServices: 1, cpu: 1, ram: 1 });
 
-        // find underloaded EC2s with 2 or fewer services and low CPU usage
-        const underloaded = machines.filter(m => m.totalServices <= 2 && m.cpu < 20);
-
-        if (underloaded.length > 1) {
-            const drain = underloaded[1]; // pick the first underloaded machine to drain
-            const target = underloaded[0]; // pick the next underloaded machine to move workloads to
+        if (machines.length > 1) {
+            const drain = machines[0]; // pick the first underloaded machine to drain
+            const target = machines[1]; // pick the next underloaded machine to move workloads to
 
             // move all workloads from drain to target 
             console.log(`Draining EC2 ${drain.ip} and moving workloads to ${target.ip}`);
@@ -23,9 +19,14 @@ setInterval(async () => {
             console.log(`Found ${services.length} sleeping services to migrate from ${drain.ip} to ${target.ip}`);
             for (const service of services) {
                 const freshTarget = await Ec2Registry.findById(target._id); // re-fetch target to get latest stats
-                if (freshTarget.cpu > 75 || freshTarget.ram > 75) {
+                if (freshTarget.cpu > 75 || freshTarget.ram > 75 || freshTarget.disk > 80 || freshTarget.totalServices >= freshTarget.maxServices) {
                     console.log(`Target EC2 ${target.ip} is now overloaded, stopping migration`);
                     break; // stop migration if target becomes overloaded
+                }
+                const freshService = await Service.findById(service._id); // re-fetch service to ensure it's still sleeping
+                if (freshService.status !== 'sleeping') {
+                    console.log(`Service ${service._id} is no longer sleeping, skipping migration`);
+                    continue; // skip if service is no longer sleeping
                 }
                 await migrateService(service, drain, target);
                 console.log(`Migrated service ${service._id} from EC2 ${drain.ip} to EC2 ${target.ip}`);
@@ -35,11 +36,12 @@ setInterval(async () => {
             console.log(`After migration, EC2 ${drain.ip} has ${activeServicesLength} active services`);
             if (activeServicesLength === 0) {
                 await Ec2Registry.updateOne({ _id: drain._id }, { status: 'offline' }); // mark as offline before stopping to avoid new deployments
-                await stopEc2(drain);
-                await Ec2Registry.findByIdAndDelete(drain._id);
+                // await stopEc2(drain);
+                // await Ec2Registry.findByIdAndDelete(drain._id);
+                await terminateEc2(drain);
                 console.log(`EC2 ${drain.ip} has been stopped and removed from registry`);
             }
-            console.log(`Finished consolidation check. Underloaded EC2s: ${underloaded.length}, Drained EC2: ${drain.ip}, Target EC2: ${target.ip}`);
+            console.log(`Finished consolidation check. Underloaded EC2s: ${machines.length}, Drained EC2: ${drain.ip}, Target EC2: ${target.ip}`);
         }
     } catch (err) {
         console.error('Error during EC2 consolidation:', err);
@@ -66,7 +68,8 @@ export async function migrateService(service, fromEc2, toEc2) {
         await executeSSHCommands([
             `docker stop ${appName} || true`,
             `docker rm ${appName} || true`,
-            `rm -f ${remoteKeyPath}`
+            `rm -f ${remoteKeyPath}`,
+            `docker rmi ${appName} || true`
         ], [], () => { }, fromEc2.ip);
 
         // Step 4 - update DB
