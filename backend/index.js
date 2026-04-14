@@ -12,7 +12,7 @@ import './ec2Host/ec2_monitor.js';
 import './ec2Host/sleep_monitor.js';
 import { consumeFromQueue, initializeQueue } from './RabbitMQ/queue.js';
 import { consumeFromQueue as consumeWakeupQueue, initializeQueue as initializeWakeupQueue } from './RabbitMQ/wakeupQueue.js';
-import { WakeServiceSubDomain } from './controllers/proxy.js';
+import { WakeServiceSubDomain, subdomainProxy } from './controllers/proxy.js';
 dotenv.config();
 
 const app = express();
@@ -63,6 +63,8 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
+app.use('/api/proxy/:subdomain', subdomainProxy);
 app.use(cookieParser());
 app.use(express.json());
 

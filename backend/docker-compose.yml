@@ -14,7 +14,8 @@ services:
     networks:
       - appnet
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
 
   rabbitmq:
     image: rabbitmq:4-management
@@ -27,6 +28,11 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
     networks:
       - appnet
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   appnet:
