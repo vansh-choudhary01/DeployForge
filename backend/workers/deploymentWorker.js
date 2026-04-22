@@ -9,6 +9,7 @@ import { executeSSHCommands } from "../helpers/ssh.js";
 import { setupSubdomain } from "../helpers/nginx.js";
 import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
 import { migrateService } from "../ec2Host/ec2_consolidation.js";
+import { createEcrRepo } from "../ec2Host/aws_ecr.js";
 
 // Start deployment worker - polls every 2 seconds for queued deployments
 const DEPLOYMENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes timeout for deployments
@@ -32,14 +33,11 @@ export async function deployFromQueue(deploymentId) {
             );
             return;
         }
-        if (service.status === "sleeping" && service.ec2Host) {
-            const bestEc2 = await getBestEc2();
-            await migrateService(service.ec2Host, bestEc2);
-        } else if (!service.ec2Host && service.subdomain !== 'api') {
+        if ((!service.ec2Host || service.status === "sleeping") && service.subdomain !== 'api') {
             const bestEc2 = await getBestEc2();
             service.ec2Host = bestEc2;;
             await service.save();
-            const totalServices = await Service.countDocuments({ ec2Host: bestEc2._id });
+            const totalServices = await Service.countDocuments({ ec2Host: bestEc2._id, status: {$in : ['running', 'waking', 'pending']} });
             bestEc2.totalServices = totalServices;
             await bestEc2.save();
         }
@@ -203,7 +201,8 @@ async function deployViaSSH(deployment, service, logs, pushLog) {
 
         // Build commands to execute on EC2
         const commands = [
-            // `docker container prune -f`, // Clean up any stopped containers to free resources before deployment
+            `docker container prune -f`, // Clean up any stopped containers to free resources before deployment
+            `docker image prune -af`,  // remove all unused images
             `rm -rf ~/apps`, // Clean up old app folders to free disk space before deployment (it's just code and it's going to be re-cloned or reuse from the container, so safe to remove)
             // Ensure base directory exists
             `mkdir -p ~/apps`, // create base directory if it doesn't exist
@@ -354,13 +353,30 @@ DOCKERFILEEOF`);
                 // Don't rethrow — new container IS running, deployment succeeded
             }
         } 
+
+        await createEcrRepo(service._id);
+        const ecrRepo = process.env.ECR_REPO_URL;
+        const imageTag = `${ecrRepo}/app-${service._id}:latest`;
+
+        await executeSSHCommands([
+            `aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${ecrRepo}`,
+            `docker tag app-${service._id} ${imageTag}`,
+            `docker push ${imageTag}`,
+            `docker rmi app-${service._id} || true`,
+            `docker rmi ${imageTag} || true`
+        ], logs, pushLog, service.ec2Host?.ip);
+
+        service.imageUrl = imageTag;
         await collectContainerLogs(appName, pushLog, service.ec2Host?.ip);
     } catch (err) {
         // On deploy failure, if we did blue-green attempt, remove temporary deployment and keep old running
         const stagingDir = `${appName}-new`;
 
         await stopAndRemoveContainer(tempName, pushLog, service.ec2Host?.ip);
-        await executeSSHCommands([`rm -rf ~/apps/${stagingDir}`], [], pushLog, service.ec2Host?.ip);
+        await executeSSHCommands([
+            `rm -rf ~/apps/${stagingDir} || true`,
+            `docker rmi app-${service._id} || true`,
+        ], [], pushLog, service.ec2Host?.ip);
 
         throw new Error(`SSH deployment failed: ${err.message}`);
     }

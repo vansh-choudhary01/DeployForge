@@ -7,9 +7,9 @@ services:
     ports:
       - "14855:3000"
     env_file:
-      - /home/ubuntu/apps/app-69b6fb58161d976b43c95281/backend/.env
+      - /home/ubuntu/app-69b6fb58161d976b43c95281/backend/.env
     volumes:
-      - /home/ubuntu/apps/app-69b6fb58161d976b43c95281/backend:/app
+      - /home/ubuntu/app-69b6fb58161d976b43c95281/backend:/app
       - /app/node_modules
     networks:
       - appnet

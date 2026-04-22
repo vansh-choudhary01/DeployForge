@@ -12,7 +12,10 @@ export async function provisionNewEC2() {
         MinCount: 1,
         MaxCount: 1,
         KeyName: process.env.EC2_KEY_NAME,
-        SecurityGroupIds: [process.env.EC2_SECURITY_GROUP_ID]
+        SecurityGroupIds: [process.env.EC2_SECURITY_GROUP_ID],
+        IamInstanceProfile: {
+            Name: 'render-ec2-role'
+        }
     });
     // console.log('Provisioning new EC2 instance...');
     // console.log(command);
@@ -65,6 +68,11 @@ export async function provisionNewEC2() {
 }
 
 export async function stopEc2(ec2) {
+    // block master ec2 to stop
+    if (ec2.ip === '3.110.154.171') {
+        console.warn(`Attempted to stop master EC2 ${ec2.ip}. Action blocked.`);
+        return;
+    }
     const command = new StopInstancesCommand({
         InstanceIds: [ec2.instanceId]
     });
@@ -74,6 +82,11 @@ export async function stopEc2(ec2) {
 }
 
 export async function terminateEc2(ec2) {
+    // block master ec2 to terminate
+    if (ec2.ip === '3.110.154.171') {
+        console.warn(`Attempted to stop master EC2 ${ec2.ip}. Action blocked.`);
+        return;
+    }
     const command = new TerminateInstancesCommand({
         InstanceIds: [ec2.instanceId]
     });
@@ -91,9 +104,11 @@ async function setupInitialEC2(ec2Ip) {
         `sudo systemctl start docker`,
         `curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -`,
         `sudo apt-get install -y nodejs`,
+        `sudo snap install aws-cli --classic`,
         `docker --version`,
         `node --version`,
-        `npm --version`
+        `npm --version`,
+        `aws --version`
     ];
 
     console.log('Setting up EC2 with initial configurations...');

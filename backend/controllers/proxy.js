@@ -1,4 +1,4 @@
-import { migrateService } from "../ec2Host/ec2_consolidation.js";
+import { migrateService, startContainer } from "../ec2Host/ec2_consolidation.js";
 import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
 import { isContainerRunning } from "../helpers/docker.js";
 import { executeSSHCommands } from "../helpers/ssh.js";
@@ -19,12 +19,21 @@ export async function WakeServiceSubDomain({type, serviceId}) {
         const appName = `app-${service._id}`;
 
         const bestEc2 = await getBestEc2();
-        if (bestEc2.ip !== service.ec2Host?.ip) {
-            console.log(`Migrating service ${service._id} from EC2 ${service.ec2Host?.ip} to EC2 ${bestEc2.ip}`);
-            await migrateService(service, service.ec2Host, bestEc2);
-        } else {
-            await executeSSHCommands([`docker start ${appName}`], [], () => { }, service.ec2Host?.ip);
-        }
+        // if (bestEc2.ip !== service.ec2Host?.ip) {
+        //     console.log(`Migrating service ${service._id} from EC2 ${service.ec2Host?.ip} to EC2 ${bestEc2.ip}`);
+        //     await migrateService(service, service.ec2Host, bestEc2);
+        // } else {
+        //     await executeSSHCommands([`docker start ${appName}`], [], () => { }, service.ec2Host?.ip);
+        // }
+
+        const ecrRepo = process.env.ECR_REPO_URL;
+        await executeSSHCommands([
+            `aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${ecrRepo}`,
+            `docker pull ${service.imageUrl}`,
+            `docker tag ${service.imageUrl} app-${service._id}:latest`,
+        ], [], (log) => {console.log(`debug - ${log}`)}, service.ec2Host?.ip)
+
+        await startContainer(service, bestEc2);
 
         // wait for container to start
         await new Promise(resolve => setTimeout(resolve, 5000));

@@ -370,7 +370,6 @@ export async function updateServiceConfig(req, res) {
     if (startCommand !== undefined) service.startCommand = startCommand;
     if (healthCheckPath !== undefined) service.healthCheckPath = healthCheckPath;
 
-    service.status = 'pending';
     await service.save();
 
     return res.json({

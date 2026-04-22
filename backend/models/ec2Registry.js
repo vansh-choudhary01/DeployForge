@@ -28,8 +28,6 @@ const ec2RegistrySchema = new mongoose.Schema({
     timestamps: true,
 });
 
-ec2RegistrySchema.index({ ip: 1 });
-ec2RegistrySchema.index({ instanceId: 1 });
 ec2RegistrySchema.index({ isInitialized: 1 });
 ec2RegistrySchema.index({ status: 1, totalServices: 1, maxServices: 1, cpu: 1, ram: 1 });
 

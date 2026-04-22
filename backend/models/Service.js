@@ -28,6 +28,9 @@ const serviceSchema = new mongoose.Schema({
     publicUrl: {
         type: String,
     },
+    imageUrl: {
+        type: String,
+    },
     events: {
         type: [eventSchema],
         default: []
