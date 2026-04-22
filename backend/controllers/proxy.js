@@ -32,7 +32,7 @@ export async function WakeServiceSubDomain({type, serviceId}) {
             `aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${ecrRepo}`,
             `docker pull ${service.imageUrl}`,
             `docker tag ${service.imageUrl} app-${service._id}:latest`,
-        ], [], (log) => {console.log(`debug - ${log}`)}, service.ec2Host?.ip)
+        ], [], () => { }, service.ec2Host?.ip)
 
         await startContainer(service, bestEc2);
 
