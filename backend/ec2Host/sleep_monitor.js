@@ -23,6 +23,7 @@ setInterval(async () => {
 
 async function sleepService(service) {
     const appName = `app-${service._id}`;
+    const serviceEc2 = service.ec2Host;
 
     await executeSSHCommands([
         `docker stop ${appName} || true`,
@@ -30,21 +31,21 @@ async function sleepService(service) {
         `docker rmi ${appName} || true`
     ], [], () => { }, service.ec2Host?.ip);
 
-    const ec2 = await Ec2Registry.findById(service.ec2Host?._id);
+    service.status = 'sleeping';
+    service.ec2Host = null;
+    await service.save();
+    console.log(`Service ${service.name} is now sleeping`);
+
+    const ec2 = await Ec2Registry.findById(serviceEc2?._id);
     if (ec2) {
         ec2.totalServices = ec2.totalServices - 1;
         if(ec2.totalServices <= 0) {
             ec2.status = 'offline';
-            await ec2.save();
+            await Ec2Registry.updateOne({ _id: ec2._id }, { status: 'offline' });
             const ec2Test = await Ec2Registry.findById(service.ec2Host?._id);
             if (ec2Test.totalServices <= 0) await terminateEc2(ec2);
             else ec2.status = 'active';
         }
         if (ec2.status !== 'offline') await ec2.save();
     }
-
-    service.status = 'sleeping';
-    service.ec2Host = null;
-    await service.save();
-    console.log(`Service ${service.name} is now sleeping`);
 }

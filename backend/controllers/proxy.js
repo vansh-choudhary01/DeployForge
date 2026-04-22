@@ -19,6 +19,7 @@ export async function WakeServiceSubDomain({type, serviceId}) {
         const appName = `app-${service._id}`;
 
         const bestEc2 = await getBestEc2();
+        service.ec2Host = bestEc2;
         // if (bestEc2.ip !== service.ec2Host?.ip) {
         //     console.log(`Migrating service ${service._id} from EC2 ${service.ec2Host?.ip} to EC2 ${bestEc2.ip}`);
         //     await migrateService(service, service.ec2Host, bestEc2);

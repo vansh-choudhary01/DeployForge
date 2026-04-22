@@ -73,9 +73,16 @@ export async function stopEc2(ec2) {
         console.warn(`Attempted to stop master EC2 ${ec2.ip}. Action blocked.`);
         return;
     }
-    const command = new StopInstancesCommand({
-        InstanceIds: [ec2.instanceId]
-    });
+    try {
+        const command = new StopInstancesCommand({
+            InstanceIds: [ec2.instanceId]
+        });
+    } catch (err) {
+        console.error(`Error stopping EC2 ${ec2.ip}:`, err);
+        ec2.status = 'active';
+        await ec2.save();
+        throw err;
+    }
 
     await client.send(command);
     await Ec2Registry.updateOne({ _id: ec2._id }, { status: 'stopped' });
@@ -87,9 +94,16 @@ export async function terminateEc2(ec2) {
         console.warn(`Attempted to stop master EC2 ${ec2.ip}. Action blocked.`);
         return;
     }
-    const command = new TerminateInstancesCommand({
-        InstanceIds: [ec2.instanceId]
-    });
+    try {
+        const command = new TerminateInstancesCommand({
+            InstanceIds: [ec2.instanceId]
+        });
+    } catch (err) {
+        console.error(`Error terminating EC2 ${ec2.ip}:`, err);
+        ec2.status = 'active';
+        await ec2.save();
+        throw err;
+    }
 
     await client.send(command);
     await Ec2Registry.findByIdAndDelete(ec2._id);
