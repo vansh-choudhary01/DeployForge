@@ -383,7 +383,6 @@ export default function DeployService() {
               name="preDeployCommand"
               value={formData.preDeployCommand}
               onChange={handleInputChange}
-              required
               placeholder="npm install"
               className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-sm"
             />
@@ -436,7 +435,6 @@ export default function DeployService() {
                 name="healthCheckPath"
                 value={formData.healthCheckPath}
                 onChange={handleInputChange}
-                required
                 placeholder="/"
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
               />

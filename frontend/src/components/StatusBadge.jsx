@@ -31,6 +31,12 @@ const statusConfig = {
     dot: 'bg-slate-500',
     label: 'Stopped',
   },
+  sleeping: {
+    bg: 'bg-yellow-900',
+    text: 'text-yellow-200',
+    dot: 'bg-yellow-500',
+    label: 'Sleeping',
+  },
 };
 
 export default function StatusBadge({ status = 'idle' }) {
