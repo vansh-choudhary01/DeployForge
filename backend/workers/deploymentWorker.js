@@ -201,8 +201,8 @@ async function deployViaSSH(deployment, service, logs, pushLog) {
 
         // Build commands to execute on EC2
         const commands = [
-            `docker container prune -f`, // Clean up any stopped containers to free resources before deployment
-            `docker image prune -af`,  // remove all unused images
+//            `docker container prune -f`, // Clean up any stopped containers to free resources before deployment
+//            `docker image prune -af`,  // remove all unused images
             `rm -rf ~/apps`, // Clean up old app folders to free disk space before deployment (it's just code and it's going to be re-cloned or reuse from the container, so safe to remove)
             // Ensure base directory exists
             `mkdir -p ~/apps`, // create base directory if it doesn't exist

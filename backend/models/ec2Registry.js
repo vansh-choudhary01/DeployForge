@@ -22,6 +22,8 @@ const ec2RegistrySchema = new mongoose.Schema({
 
     maxServices: { type: Number, default: process.env.MAX_SERVICES_PER_EC2 || 10 },
 
+    initialLogs: { type: [String], default: [] },
+
     // Timestamps
     lastCheckedAt: Date,
 }, {

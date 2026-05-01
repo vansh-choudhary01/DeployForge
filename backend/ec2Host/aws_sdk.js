@@ -25,7 +25,6 @@ export async function provisionNewEC2() {
     // console.log('Instance created:', instanceId, '— waiting for it to run...');
         // save to DB
     const ec2 = await Ec2Registry.create({
-        ip: null, // will update with actual IP once it's running
         instanceId: instanceId,
         region: process.env.AWS_REGION || "ap-south-1",
         cpu: 0,
@@ -92,6 +91,7 @@ export async function terminateEc2(ec2) {
     // block master ec2 to terminate
     if (ec2.ip === '3.110.154.171') {
         console.warn(`Attempted to stop master EC2 ${ec2.ip}. Action blocked.`);
+        ec2.status = 'active';
         return;
     }
     try {
