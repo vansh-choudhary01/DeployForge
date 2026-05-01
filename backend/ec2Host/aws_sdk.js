@@ -118,11 +118,9 @@ async function setupInitialEC2(ec2Ip, ec2) {
         `sudo systemctl start docker`,
         `curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -`,
         `sudo apt-get install -y nodejs`,
-        `sudo apt-get install -y awscli`,
         `docker --version`,
         `node --version`,
-        `npm --version`,
-        `aws --version`
+        `npm --version`
     ];
 
     console.log('Setting up EC2 with initial configurations...');
