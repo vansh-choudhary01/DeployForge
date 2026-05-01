@@ -118,7 +118,7 @@ async function setupInitialEC2(ec2Ip) {
         `sudo systemctl start docker`,
         `curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -`,
         `sudo apt-get install -y nodejs`,
-        `sudo snap install aws-cli --classic`,
+        `sudo apt-get install -y awscli`,
         `docker --version`,
         `node --version`,
         `npm --version`,
