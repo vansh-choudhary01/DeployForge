@@ -47,7 +47,7 @@ export async function provisionNewEC2() {
     await waitForSSH(instance.PublicIpAddress);
 
     try {
-        await setupInitialEC2(instance.PublicIpAddress);
+        await setupInitialEC2(instance.PublicIpAddress, ec2);
     } catch (err) {
         console.error('Error during EC2 setup:', err);
         // if setup fails, stop the EC2 to avoid unnecessary costs
@@ -109,7 +109,7 @@ export async function terminateEc2(ec2) {
     await Ec2Registry.findByIdAndDelete(ec2._id);
 }
 
-async function setupInitialEC2(ec2Ip) {
+async function setupInitialEC2(ec2Ip, ec2) {
     const commands = [
         `sudo apt-get update -y`,
         `sudo apt-get install -y docker.io`,
@@ -126,6 +126,6 @@ async function setupInitialEC2(ec2Ip) {
     ];
 
     console.log('Setting up EC2 with initial configurations...');
-    await executeSSHCommands(commands, [], (msg) => {}, ec2Ip);
+    await executeSSHCommands(commands, ec2?.initialLogs || [], (msg) => {console.log(msg)}, ec2Ip);
     console.log('EC2 setup completed');
 }
