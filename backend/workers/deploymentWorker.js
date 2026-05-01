@@ -8,7 +8,6 @@ import { getPort, pickNewPortForBlueGreen } from "../helpers/ports.js";
 import { executeSSHCommands } from "../helpers/ssh.js";
 import { setupSubdomain } from "../helpers/nginx.js";
 import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
-import { migrateService } from "../ec2Host/ec2_consolidation.js";
 import { createEcrRepo } from "../ec2Host/aws_ecr.js";
 
 // Start deployment worker - polls every 2 seconds for queued deployments

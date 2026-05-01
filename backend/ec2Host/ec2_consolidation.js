@@ -48,48 +48,48 @@ import { detectContainerPort } from '../helpers/docker.js';
 //     }
 // }, 5 * 60 * 1000); // Check every 5 minutes
 
-export async function migrateService(service, fromEc2, toEc2) {
-    const appName = `app-${service._id}`;
-    const remoteKeyPath = '/tmp/ec2key.pem';
-    const pemKeyBase64 = process.env.EC2_SSH_KEY_BASE64;
+// export async function migrateService(service, fromEc2, toEc2) {
+//     const appName = `app-${service._id}`;
+//     const remoteKeyPath = '/tmp/ec2key.pem';
+//     const pemKeyBase64 = process.env.EC2_SSH_KEY_BASE64;
 
-    try {
-        // Step 1 - write pem key onto fromEc2 safely via base64
-        await executeSSHCommands([
-            `sudo rm -f ${remoteKeyPath} && echo '${pemKeyBase64}' | base64 -d | sudo tee ${remoteKeyPath} > /dev/null && sudo chmod 400 ${remoteKeyPath} && sudo chown ubuntu:ubuntu ${remoteKeyPath}`
-        ], [], () => { }, fromEc2.ip);
+//     try {
+//         // Step 1 - write pem key onto fromEc2 safely via base64
+//         await executeSSHCommands([
+//             `sudo rm -f ${remoteKeyPath} && echo '${pemKeyBase64}' | base64 -d | sudo tee ${remoteKeyPath} > /dev/null && sudo chmod 400 ${remoteKeyPath} && sudo chown ubuntu:ubuntu ${remoteKeyPath}`
+//         ], [], () => { }, fromEc2.ip);
 
-        // Step 2 - transfer docker image directly fromEc2 → toEc2
-        await executeSSHCommands([
-            `docker save ${appName} | gzip | ssh -i ${remoteKeyPath} -o StrictHostKeyChecking=no ubuntu@${toEc2.ip} 'gunzip | docker load'`
-        ], [], () => { }, fromEc2.ip);
+//         // Step 2 - transfer docker image directly fromEc2 → toEc2
+//         await executeSSHCommands([
+//             `docker save ${appName} | gzip | ssh -i ${remoteKeyPath} -o StrictHostKeyChecking=no ubuntu@${toEc2.ip} 'gunzip | docker load'`
+//         ], [], () => { }, fromEc2.ip);
 
-        // Step 3 - cleanup fromEc2
-        await executeSSHCommands([
-            `docker stop ${appName} || true`,
-            `docker rm ${appName} || true`,
-            `rm -f ${remoteKeyPath}`,
-            `docker rmi ${appName} || true`
-        ], [], () => { }, fromEc2.ip);
+//         // Step 3 - cleanup fromEc2
+//         await executeSSHCommands([
+//             `docker stop ${appName} || true`,
+//             `docker rm ${appName} || true`,
+//             `rm -f ${remoteKeyPath}`,
+//             `docker rmi ${appName} || true`
+//         ], [], () => { }, fromEc2.ip);
 
-        // Step 4 - update DB
-        service.ec2Host = toEc2;
-        await service.save();
-        await Ec2Registry.updateOne({ _id: fromEc2._id }, { $inc: { totalServices: -1 } });
-        await Ec2Registry.updateOne({ _id: toEc2._id }, { $inc: { totalServices: 1 } });
+//         // Step 4 - update DB
+//         service.ec2Host = toEc2;
+//         await service.save();
+//         await Ec2Registry.updateOne({ _id: fromEc2._id }, { $inc: { totalServices: -1 } });
+//         await Ec2Registry.updateOne({ _id: toEc2._id }, { $inc: { totalServices: 1 } });
 
-        console.log(`Migrated ${appName} from ${fromEc2.ip} to ${toEc2.ip}`);
+//         console.log(`Migrated ${appName} from ${fromEc2.ip} to ${toEc2.ip}`);
 
-        // Step 5 - start container on toEc2
-        await startContainer(service, toEc2);
+//         // Step 5 - start container on toEc2
+//         await startContainer(service, toEc2);
 
-    } catch (err) {
-        console.error(`Error migrating service ${service._id} from EC2 ${fromEc2.ip} to EC2 ${toEc2.ip}:`, err);
-        // cleanup key from fromEc2 on failure
-        await executeSSHCommands([`rm -f ${remoteKeyPath}`], [], () => { }, fromEc2.ip).catch(() => { });
-        throw err;
-    }
-}
+//     } catch (err) {
+//         console.error(`Error migrating service ${service._id} from EC2 ${fromEc2.ip} to EC2 ${toEc2.ip}:`, err);
+//         // cleanup key from fromEc2 on failure
+//         await executeSSHCommands([`rm -f ${remoteKeyPath}`], [], () => { }, fromEc2.ip).catch(() => { });
+//         throw err;
+//     }
+// }
 
 export async function startContainer(service, toEc2) {
     const appName = `app-${service._id}`;

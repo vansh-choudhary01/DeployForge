@@ -1,4 +1,4 @@
-import { migrateService, startContainer } from "../ec2Host/ec2_consolidation.js";
+import { startContainer } from "../ec2Host/ec2_consolidation.js";
 import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
 import { isContainerRunning } from "../helpers/docker.js";
 import { executeSSHCommands } from "../helpers/ssh.js";
