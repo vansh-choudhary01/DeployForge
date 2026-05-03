@@ -14,6 +14,8 @@ setInterval(async () => {
 
         for (const service of idleServices) {
             if (service.subdomain === 'api') continue; // never sleep the API service
+            if (service.subdomain === 'dravya-aaro-backend') continue; // company running project
+            console.log(`Putting service ${service.subdomain} to sleep due to inactivity...`);
             await sleepService(service);
         }
     } catch (err) {
@@ -38,12 +40,20 @@ async function sleepService(service) {
 
     const ec2 = await Ec2Registry.findById(serviceEc2?._id);
     if (ec2) {
-        ec2.totalServices = ec2.totalServices - 1;
-        if(ec2.totalServices <= 0) {
-            ec2.status = 'offline';
-            await Ec2Registry.updateOne({ _id: ec2._id }, { status: 'offline' });
-            const ec2Test = await Ec2Registry.findById(service.ec2Host?._id);
-            if (ec2Test.totalServices <= 0) await terminateEc2(ec2);
+        ec2.totalServices = Math.max(0, ec2.totalServices - 1);
+        if (ec2.totalServices <= 0) {
+            const activeServices = await Service.countDocuments({
+                ec2Host: ec2._id,
+                status: 'running'
+            });
+
+            if (activeServices === 0) {
+                ec2.status = 'offline';
+                await ec2.save();
+
+                await terminateEc2(ec2);
+                return;
+            }
             else ec2.status = 'active';
         }
         if (ec2.status !== 'offline') await ec2.save();

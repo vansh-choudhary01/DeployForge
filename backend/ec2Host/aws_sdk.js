@@ -23,7 +23,7 @@ export async function provisionNewEC2() {
     const response = await client.send(command);
     const instanceId = response.Instances[0].InstanceId;
     // console.log('Instance created:', instanceId, '— waiting for it to run...');
-        // save to DB
+    // save to DB
     const ec2 = await Ec2Registry.create({
         instanceId: instanceId,
         region: process.env.AWS_REGION || "ap-south-1",
@@ -45,6 +45,7 @@ export async function provisionNewEC2() {
 
     // wait for SSH before attempting setup
     await waitForSSH(instance.PublicIpAddress);
+    await new Promise(res => setTimeout(res, 20000)); // 20 sec
 
     try {
         await setupInitialEC2(instance.PublicIpAddress, ec2);
@@ -92,6 +93,7 @@ export async function terminateEc2(ec2) {
     if (ec2.ip === '3.110.154.171') {
         console.warn(`Attempted to stop master EC2 ${ec2.ip}. Action blocked.`);
         ec2.status = 'active';
+        ec2.save();
         return;
     }
     try {
@@ -112,18 +114,27 @@ export async function terminateEc2(ec2) {
 async function setupInitialEC2(ec2Ip, ec2) {
     const commands = [
         `sudo apt-get update -y`,
-        `sudo apt-get install -y docker.io`,
+        `sudo apt-get install -y docker.io unzip`,
         `sudo usermod -aG docker ubuntu`,
         `sudo systemctl enable docker`,
         `sudo systemctl start docker`,
+
         `curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -`,
         `sudo apt-get install -y nodejs`,
+
+        // ✅ AWS CLI (correct way)
+        `curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"`,
+        `unzip awscliv2.zip`,
+        `sudo ./aws/install`,
+
         `docker --version`,
         `node --version`,
-        `npm --version`
+        `npm --version`,
+        `aws --version`
     ];
 
     console.log('Setting up EC2 with initial configurations...');
-    await executeSSHCommands(commands, ec2?.initialLogs || [], (msg) => {console.log(msg)}, ec2Ip);
+    ec2.initialLogs = ec2.initialLogs || [];
+    await executeSSHCommands(commands, [], (msg) => { console.log(msg); ec2.initialLogs.push(msg); }, ec2Ip);
     console.log('EC2 setup completed');
 }
