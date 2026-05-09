@@ -43,7 +43,7 @@ server {
 
     location / {
       #  proxy_pass https://api.naaspeeti.xyz/api/proxy/$subdomain;
-        proxy_pass http://localhost:${port}/api/proxy/$subdomain;
+        proxy_pass http://localhost:${port}/api/proxy/$subdomain$request_uri;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
