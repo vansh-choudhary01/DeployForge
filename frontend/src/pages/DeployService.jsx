@@ -26,6 +26,8 @@ export default function DeployService() {
     preDeployCommand: 'npm install',
     startCommand: 'npm start',
     healthCheckPath: '/',
+    deploymentType: 'server',
+    buildDirectory: 'build'
   });
 
   useEffect(() => {
@@ -176,6 +178,7 @@ export default function DeployService() {
     try {
       const deployData = {
         ...formData,
+        startCommand: formData.deploymentType === 'server' ? formData.startCommand : undefined,
         environmentVariables: envVars,
       };
       
@@ -410,6 +413,23 @@ export default function DeployService() {
 
             <div>
               <label className="block text-sm font-medium text-white mb-2">
+                Deployment Type * <span>[server(node, python, etc) or static (React, Vue, Angular, etc)]</span>
+              </label>
+              <select
+                name="deploymentType"
+                value={formData.deploymentType}
+                onChange={handleInputChange}
+                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                placeholder="server(node, python, etc) or static (React, Vue, Angular, etc)"
+              >
+                <option value="server">Server</option>
+                <option value="static">Static</option>
+              </select>
+            </div>
+
+            {formData.deploymentType === 'server' ? (
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">
                 Start Command *
               </label>
               <input
@@ -417,6 +437,7 @@ export default function DeployService() {
                 name="startCommand"
                 value={formData.startCommand}
                 onChange={handleInputChange}
+                disabled={formData.deploymentType !== 'server'}
                 required
                 placeholder="npm start"
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-sm"
@@ -425,6 +446,26 @@ export default function DeployService() {
                 {formData.rootDirectory || '/'} <span className="text-slate-200">$</span> {formData.startCommand}
               </p>
             </div>
+            ) : (
+              <div className="p-4 bg-slate-700 rounded border border-slate-600">
+                <p className="text-sm text-slate-300">
+                  For static sites, we will automatically run the build command and serve the contents of the build directory. Make sure to specify the correct build command and that it outputs to a given build directory.
+                </p>
+                <label className="block text-sm font-medium text-white mt-4 mb-2">
+                  Build Directory
+                </label>
+                <input
+                  type="text"
+                  name="buildDirectory"
+                  value={formData.buildDirectory}
+                  onChange={handleInputChange}
+                  placeholder="build"
+                  className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            )}
+
+
 
             <div>
               <label className="block text-sm font-medium text-white mb-2">

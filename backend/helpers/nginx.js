@@ -36,8 +36,8 @@ server {
     listen 443 ssl;
     server_name ~^(?<subdomain>.+)\.naaspeeti\.xyz$;
 
-    ssl_certificate /etc/letsencrypt/live/naaspeeti.xyz-0001/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/naaspeeti.xyz-0001/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/naaspeeti.xyz/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/naaspeeti.xyz/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 

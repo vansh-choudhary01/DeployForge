@@ -74,6 +74,9 @@ const serviceSchema = new mongoose.Schema({
         type: String,
         default: '/'
     },
+    bucketName: {
+        type: String
+    },
     buildCommand: {
         type: String,
         default: ''
@@ -94,6 +97,15 @@ const serviceSchema = new mongoose.Schema({
         type: String,
         enum: ['pending', 'building', 'deploying', 'running', 'sleeping', 'failed', 'stopped', 'waking'],
         default: 'pending'
+    },
+    deploymentType: {
+        type: String,
+        enum: ['server', 'static'],
+        default: 'server'
+    },
+    buildDirectory: {
+        type: String,
+        default: 'build'
     },
     logs: [{
         message: String,
@@ -124,6 +136,9 @@ const serviceSchema = new mongoose.Schema({
     lastRequestAt: {
         type: Date,
         default: Date.now
+    },
+    s3Url: {
+        type: String
     },
     ec2Host: {
         type: mongoose.Schema.Types.ObjectId,

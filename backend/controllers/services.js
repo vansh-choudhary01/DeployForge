@@ -95,13 +95,17 @@ export async function deployService(req, res) {
       healthCheckPath,
       projectId,
       environmentVariables,
+      deploymentType,
+      buildDirectory
     } = req.body;
     if (
       !repo ||
       !branch ||
       !preDeployCommand ||
-      !startCommand ||
-      !healthCheckPath
+      (!startCommand && deploymentType === 'server') ||
+      (!buildDirectory && deploymentType === 'static') ||
+      !healthCheckPath ||
+      !deploymentType
     ) {
       return res.status(400).json({ message: "All fields are required" });
     }
@@ -120,6 +124,8 @@ export async function deployService(req, res) {
       preDeployCommand,
       startCommand,
       healthCheckPath,
+      deploymentType,
+      buildDirectory,
       status: "pending",
       environmentVariables: environmentVariables || [],
       logs: [],

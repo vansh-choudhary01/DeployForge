@@ -67,6 +67,16 @@ export async function subdomainProxy(req, res) {
         // update last request
         await Service.findByIdAndUpdate(service._id, { lastRequestAt: new Date() });
 
+        if (service.deploymentType === 'static') {
+            return proxy.web(req, res, {
+                target: service.s3Url,
+                changeOrigin: true,
+            }, (err) => {
+                console.error('Proxy error for static site', err);
+                res.status(502).send("Bad Gateway");
+            });
+        }
+
         // sleeping? wake it
         if (service.status === 'sleeping') {
             // WakeServiceSubDomain(service);

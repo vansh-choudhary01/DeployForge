@@ -9,6 +9,7 @@ import { executeSSHCommands } from "../helpers/ssh.js";
 import { setupSubdomain } from "../helpers/nginx.js";
 import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
 import { createEcrRepo } from "../ec2Host/aws_ecr.js";
+import { deployFrontend } from "../s3Host/deployFrontend.js";
 
 // Start deployment worker - polls every 2 seconds for queued deployments
 const DEPLOYMENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes timeout for deployments
@@ -32,11 +33,52 @@ export async function deployFromQueue(deploymentId) {
             );
             return;
         }
+
+        if (service.deploymentType === 'static') {
+            let logs = [];
+            const pushLog = (message) => {
+                logs.push(message);
+                deploymentLogger(message, service.user.toString(), deployment._id.toString());
+            };
+            // For static deployments, we can directly call the frontend deploy function without going through the SSH deployment process
+            let deploymentStatus = 'running';
+            deployFrontend(service, pushLog)
+                .then(async () => {
+                    pushLog(`[${new Date().toISOString()}] Static deployment completed successfully.`);
+                    deploymentStatus = 'running';
+                    let subdomain = service.subdomain;
+                    if (service.subdomain) {
+                        pushLog(`[${new Date().toISOString()}] Frontend deployed: https://${service.subdomain}.naaspeeti.xyz`);
+                    } else {
+                        const newsubdomain = await getStableSubdomain(service);
+                        subdomain = newsubdomain;
+                        await Service.updateOne({ _id: service._id }, { subdomain });
+                        pushLog(`[${new Date().toISOString()}] Frontend deployed: https://${subdomain}.naaspeeti.xyz`);
+                    }
+
+                    // Maintain stable subdomain mapping across redeploys
+                    await UsedPortAndSubDomain.findOneAndUpdate(
+                        { subdomain },
+                        { subdomain, deployment: deployment._id },
+                        { upsert: true }
+                    );
+                })
+                .catch(err => {
+                    console.error('Static deployment error:', err);
+                    pushLog(`[${new Date().toISOString()}] ERROR: ${err.message}`);
+                    deploymentStatus = 'failed';
+                }).finally(() => {
+                    Deployment.updateOne({ _id: deployment._id }, { status: deploymentStatus, logs }).exec();
+                    Service.updateOne({ _id: service._id }, { status: deploymentStatus }).exec();
+                });
+            return;
+        }
+
         if ((!service.ec2Host || service.status === "sleeping") && service.subdomain !== 'api') {
             const bestEc2 = await getBestEc2();
             service.ec2Host = bestEc2;;
             await service.save();
-            const totalServices = await Service.countDocuments({ ec2Host: bestEc2._id, status: {$in : ['running', 'waking', 'pending']} });
+            const totalServices = await Service.countDocuments({ ec2Host: bestEc2._id, status: { $in: ['running', 'waking', 'pending'] } });
             bestEc2.totalServices = totalServices;
             await bestEc2.save();
         }
@@ -66,6 +108,16 @@ export const getDeploymentLogs = async (deploymentId, userId) => {
     });
 };
 
+const deploymentLogger = (message, userId, deploymentId) => {
+    let userSocketId = sockets.get(userId);
+    if (userSocketId) {
+        io.to(userSocketId).emit('deployment:log', {
+            deploymentId,
+            log: message
+        });
+    }
+}
+
 async function runDeployment(deployment, service) {
     const startTime = Date.now();
     const logs = [];
@@ -74,13 +126,7 @@ async function runDeployment(deployment, service) {
     // Helper function to push logs and emit via socket.io
     const pushLog = (message) => {
         logs.push(message);
-        let userSocketId = sockets.get(service.user.toString());
-        if (userSocketId) {
-            io.to(userSocketId).emit('deployment:log', {
-                deploymentId: deployment._id.toString(),
-                log: message
-            });
-        }
+        deploymentLogger(message, service.user.toString(), deployment._id.toString());
     };
 
     // AFTER — extract a helper, call it once per emit
@@ -200,8 +246,8 @@ async function deployViaSSH(deployment, service, logs, pushLog) {
 
         // Build commands to execute on EC2
         const commands = [
-//            `docker container prune -f`, // Clean up any stopped containers to free resources before deployment
-//            `docker image prune -af`,  // remove all unused images
+            //            `docker container prune -f`, // Clean up any stopped containers to free resources before deployment
+            //            `docker image prune -af`,  // remove all unused images
             `rm -rf ~/apps`, // Clean up old app folders to free disk space before deployment (it's just code and it's going to be re-cloned or reuse from the container, so safe to remove)
             // Ensure base directory exists
             `mkdir -p ~/apps`, // create base directory if it doesn't exist
@@ -260,7 +306,6 @@ ENVFILEEOF`); // create .env file with environment variables
 RUN apt-get update && apt-get install -y iproute2
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
 COPY . .
 ENV PORT=3000
 EXPOSE 3000
@@ -351,7 +396,7 @@ DOCKERFILEEOF`);
                 pushLog(`[${new Date().toISOString()}] WARNING: Blue-green swap failed: ${err.message}. Manual cleanup may be needed.`);
                 // Don't rethrow — new container IS running, deployment succeeded
             }
-        } 
+        }
 
         await createEcrRepo(service._id);
         const ecrRepo = process.env.ECR_REPO_URL;
