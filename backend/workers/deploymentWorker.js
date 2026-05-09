@@ -52,9 +52,15 @@ export async function deployFromQueue(deploymentId) {
                     } else {
                         const newsubdomain = await getStableSubdomain(service);
                         subdomain = newsubdomain;
-                        await Service.updateOne({ _id: service._id }, { subdomain });
                         pushLog(`[${new Date().toISOString()}] Frontend deployed: https://${subdomain}.naaspeeti.xyz`);
                     }
+                    await Service.updateOne({ _id: service._id }, { subdomain, publicUrl: `https://${subdomain}.naaspeeti.xyz` });
+
+                    statusEmitter('deployment:completed', {
+                        deploymentId: deployment._id.toString(),
+                        status: 'running',
+                        deployedUrl: `https://${subdomain}.naaspeeti.xyz`
+                    }, service.user.toString());
 
                     // Maintain stable subdomain mapping across redeploys
                     await UsedPortAndSubDomain.findOneAndUpdate(
@@ -118,6 +124,13 @@ const deploymentLogger = (message, userId, deploymentId) => {
     }
 }
 
+const statusEmitter = (event, data, userId) => {
+    const socketId = sockets.get(userId);
+    if (socketId) {
+        io.to(socketId).emit(event, data);
+    }
+};
+
 async function runDeployment(deployment, service) {
     const startTime = Date.now();
     const logs = [];
@@ -131,10 +144,7 @@ async function runDeployment(deployment, service) {
 
     // AFTER — extract a helper, call it once per emit
     const emitToUser = (event, data) => {
-        const socketId = sockets.get(service.user.toString());
-        if (socketId) {
-            io.to(socketId).emit(event, data);
-        }
+        statusEmitter(event, data, service.user.toString());
     };
 
     try {

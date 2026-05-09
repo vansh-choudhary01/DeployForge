@@ -7,4 +7,4 @@ RUN npm install -g nodemon
 COPY . .
 ENV PORT=3000
 EXPOSE 3000
-CMD ["nodemon", "index.js"]
+CMD ["nodemon", "-L", "index.js"]

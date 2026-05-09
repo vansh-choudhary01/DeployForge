@@ -31,6 +31,7 @@ export async function provisionNewEC2() {
         ram: 0,
         status: 'waking',
         isInitialized: false,
+        isProtected: false
     });
 
     // wait until EC2 is running and has a public IP
@@ -68,15 +69,16 @@ export async function provisionNewEC2() {
 }
 
 export async function stopEc2(ec2) {
-    // block master ec2 to stop
-    if (ec2.ip === '3.110.154.171') {
-        console.warn(`Attempted to stop master EC2 ${ec2.ip}. Action blocked.`);
+    // block protected ec2 from stopping
+    if (ec2.isProtected === true) {
+        console.warn(`Attempted to stop protected EC2 ${ec2.ip}. Action blocked.`);
         return;
     }
     try {
         const command = new StopInstancesCommand({
             InstanceIds: [ec2.instanceId]
         });
+        await client.send(command);
     } catch (err) {
         console.error(`Error stopping EC2 ${ec2.ip}:`, err);
         ec2.status = 'active';
@@ -84,30 +86,28 @@ export async function stopEc2(ec2) {
         throw err;
     }
 
-    await client.send(command);
     await Ec2Registry.updateOne({ _id: ec2._id }, { status: 'stopped' });
 }
 
 export async function terminateEc2(ec2) {
     // block master ec2 to terminate
-    if (ec2.ip === '3.110.154.171') {
-        console.warn(`Attempted to stop master EC2 ${ec2.ip}. Action blocked.`);
-        ec2.status = 'active';
-        ec2.save();
+    if (ec2.isProtected === true) {
+        console.warn(`Attempted to terminate protected EC2 ${ec2.ip}. Action blocked.`);
         return;
     }
+
+    Ec2Registry.updateOne({ _id: ec2._id }, { status: 'offline' });
     try {
         const command = new TerminateInstancesCommand({
             InstanceIds: [ec2.instanceId]
         });
+        await client.send(command);
     } catch (err) {
         console.error(`Error terminating EC2 ${ec2.ip}:`, err);
-        ec2.status = 'active';
-        await ec2.save();
+        await Ec2Registry.updateOne({ _id: ec2._id }, { status: 'active' });
         throw err;
     }
 
-    await client.send(command);
     await Ec2Registry.findByIdAndDelete(ec2._id);
 }
 

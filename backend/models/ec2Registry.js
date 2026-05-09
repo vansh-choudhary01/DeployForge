@@ -16,6 +16,7 @@ const ec2RegistrySchema = new mongoose.Schema({
         default: 'active',
     },
     isInitialized: { type: Boolean, default: false },
+    isProtected: { type: Boolean, default: false }, // if true, this EC2 won't be automatically stopped or terminated
 
     // Capacity
     totalServices: { type: Number, default: 0 },
