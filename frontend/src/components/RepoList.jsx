@@ -6,7 +6,7 @@ export default function RepoList({ repos, onSelectRepo, loading = false }) {
     return (
       <div className="space-y-3">
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-16 bg-slate-700 rounded-lg animate-pulse" />
+          <div key={i} className="h-16 animate-pulse rounded-lg bg-white/70" />
         ))}
       </div>
     );
@@ -15,7 +15,7 @@ export default function RepoList({ repos, onSelectRepo, loading = false }) {
   if (!repos || repos.length === 0) {
     return (
       <div className="text-center py-12">
-        <p className="text-slate-400">No repositories found</p>
+        <p className="text-sm font-semibold text-stone-500">No repositories found</p>
       </div>
     );
   }
@@ -25,21 +25,21 @@ export default function RepoList({ repos, onSelectRepo, loading = false }) {
       {repos.map((repo) => (
         <div
           key={repo.id}
-          className="flex items-center justify-between p-4 bg-slate-800 border border-slate-700 rounded-lg hover:border-slate-600 transition-colors group cursor-pointer"
+          className="group flex cursor-pointer items-center justify-between rounded-lg border border-black/10 bg-white p-4 transition hover:-translate-y-0.5 hover:border-teal-300 hover:bg-teal-50"
           onClick={() => onSelectRepo(repo)}
         >
           <div className="flex-1">
-            <h4 className="text-white font-medium">{repo.name}</h4>
-            <p className="text-sm text-slate-400 mt-1">{repo.description || 'No description'}</p>
+            <h4 className="font-black text-neutral-950">{repo.name}</h4>
+            <p className="mt-1 text-sm text-stone-500">{repo.description || 'No description'}</p>
           </div>
           <button
             onClick={(e) => {
               e.stopPropagation();
               onSelectRepo(repo);
             }}
-            className="p-2 opacity-0 group-hover:opacity-100 transition-opacity"
+            className="rounded-lg p-2 opacity-0 transition group-hover:bg-white group-hover:opacity-100"
           >
-            <HiOutlineArrowRight className="w-5 h-5 text-blue-400" />
+            <HiOutlineArrowRight className="h-5 w-5 text-teal-700" />
           </button>
         </div>
       ))}

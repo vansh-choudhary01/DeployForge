@@ -1,9 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  HiArrowRight,
+  HiChevronDown,
+  HiChevronUp,
+  HiOutlineFolderPlus,
+  HiPlus,
+  HiTrash,
+} from 'react-icons/hi2';
+import StatusBadge from '../components/StatusBadge';
 import { projectAPI } from '../utils/api.js';
 
 export default function Projects() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -11,9 +21,6 @@ export default function Projects() {
   const [formData, setFormData] = useState({ name: '' });
   const [submitting, setSubmitting] = useState(false);
   const [expandedProjectId, setExpandedProjectId] = useState(null);
-
-  // Fetch projects on component mount
-  const location = useLocation();
 
   useEffect(() => {
     fetchProjects();
@@ -74,126 +81,158 @@ export default function Projects() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-white">Projects</h1>
-        <p className="text-slate-400 mt-2">Organize your services into projects</p>
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="page-kicker">Projects</p>
+          <h1 className="page-title">Organize services by product, client, or idea.</h1>
+          <p className="page-copy">Projects keep related services together and make it easier to deploy into the right workspace.</p>
+        </div>
+        <button onClick={() => setShowForm((value) => !value)} className="btn-primary">
+          {showForm ? (
+            'Cancel'
+          ) : (
+            <>
+              <HiPlus className="h-5 w-5" />
+              New Project
+            </>
+          )}
+        </button>
       </div>
 
-      {error && (
-        <div className="bg-red-900 border border-red-700 rounded-lg p-4 text-red-200">
-          {error}
-        </div>
-      )}
-
-      <button
-        onClick={() => setShowForm(!showForm)}
-        className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg"
-      >
-        {showForm ? 'Cancel' : '+ New Project'}
-      </button>
+      {error && <div className="alert-error">{error}</div>}
 
       {showForm && (
-        <form onSubmit={handleCreateProject} className="bg-slate-800 border border-slate-700 rounded-lg p-6 space-y-4">
-          <div>
-            <label className="block text-slate-300 font-medium mb-2">Project Name</label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({ name: e.target.value })}
-              placeholder="Enter project name"
-              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
-            />
+        <form onSubmit={handleCreateProject} className="surface p-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto] md:items-end">
+            <div>
+              <label className="field-label">Project Name</label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({ name: e.target.value })}
+                placeholder="customer-portal"
+                className="field-input"
+              />
+            </div>
+            <button type="submit" disabled={submitting} className="btn-primary">
+              {submitting ? 'Creating...' : 'Create Project'}
+            </button>
           </div>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg"
-          >
-            {submitting ? 'Creating...' : 'Create Project'}
-          </button>
         </form>
       )}
 
       {loading ? (
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-12 text-center">
-          <p className="text-slate-400">Loading projects...</p>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {[...Array(6)].map((_, index) => (
+            <div key={index} className="h-52 animate-pulse rounded-lg bg-white/70" />
+          ))}
         </div>
       ) : projects.length === 0 ? (
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-12 text-center">
-          <p className="text-slate-400 mb-4">No projects yet</p>
-          <p className="text-slate-500 text-sm">Create your first project to get started</p>
+        <div className="surface p-12 text-center">
+          <span className="mx-auto grid h-14 w-14 place-items-center rounded-lg bg-teal-100 text-teal-800">
+            <HiOutlineFolderPlus className="h-8 w-8" />
+          </span>
+          <h2 className="mt-5 text-2xl font-black text-neutral-950">No projects yet</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">
+            Create a project first, then deploy services into it from GitHub repositories.
+          </p>
+          <button onClick={() => setShowForm(true)} className="btn-primary mt-6">
+            <HiPlus className="h-5 w-5" />
+            Create first project
+          </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {projects.map((project) => (
-            <div key={project._id} className="bg-slate-800 border border-slate-700 rounded-lg p-6 hover:border-slate-600 transition">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-1">{project.name}</h3>
-                  <p className="text-slate-400 text-sm">ID: {project.projectId}</p>
-                  <p className="text-slate-500 text-xs">Services: {project.services?.length || 0}</p>
-                </div>
-                <div className="space-y-2 text-right">
-                  <button
-                    onClick={() => setExpandedProjectId(expandedProjectId === project._id ? null : project._id)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-1 px-3 rounded-lg"
-                  >
-                    {expandedProjectId === project._id ? 'Collapse' : 'View Services'}
-                  </button>
-                  <button
-                    onClick={() => handleDeleteProject(project.projectId)}
-                    disabled={(project.services?.length || 0) > 0}
-                    className={`text-xs font-semibold py-1 px-3 rounded-lg ${
-                      (project.services?.length || 0) > 0
-                        ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
-                        : 'bg-red-900 hover:bg-red-800 text-red-200'
-                    }`}
-                  >
-                    Delete
-                  </button>
-                  {(project.services?.length || 0) > 0 && (
-                    <p className="text-xs text-slate-400 mt-1">Delete disabled: remove services first.</p>
-                  )}
-                </div>
-              </div>
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          {projects.map((project) => {
+            const isExpanded = expandedProjectId === project._id;
+            const servicesCount = project.services?.length || 0;
 
-              {expandedProjectId === project._id && (
-                <div className="mt-4 bg-slate-900 border border-slate-700 rounded-lg p-4">
-                  <h4 className="text-sm text-slate-200 font-semibold mb-3">Services in project</h4>
-                  {project.services?.length === 0 ? (
-                    <p className="text-slate-400 text-sm">No services added yet.</p>
-                  ) : (
-                    <ul className="space-y-3">
-                      {project.services.map((service) => (
-                        <li key={service._id} className="bg-slate-800 border border-slate-700 rounded-lg p-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold text-white">{service.name}</p>
-                              <p className="text-xs text-slate-400">Branch: {service.gitBranch || 'main'}</p>
-                              <p className="text-xs text-slate-400">Status: {service.status || 'pending'}</p>
+            return (
+              <article key={project._id} className="surface p-6">
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-teal-700">Project</p>
+                    <h3 className="mt-2 truncate text-2xl font-black text-neutral-950">{project.name}</h3>
+                    <p className="mt-2 font-mono text-xs text-stone-500">ID: {project.projectId}</p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 sm:justify-end">
+                    <button
+                      onClick={() => setExpandedProjectId(isExpanded ? null : project._id)}
+                      className="btn-secondary px-3"
+                    >
+                      {isExpanded ? <HiChevronUp className="h-4 w-4" /> : <HiChevronDown className="h-4 w-4" />}
+                      {isExpanded ? 'Collapse' : 'View Services'}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteProject(project.projectId)}
+                      disabled={servicesCount > 0}
+                      className="btn-danger px-3"
+                      title={servicesCount > 0 ? 'Remove services first' : 'Delete project'}
+                    >
+                      <HiTrash className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  <div className="surface-muted p-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Services</p>
+                    <p className="mt-2 text-3xl font-black text-neutral-950">{servicesCount}</p>
+                  </div>
+                  <div className="surface-muted p-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">State</p>
+                    <p className="mt-2 text-sm font-black text-neutral-950">
+                      {servicesCount > 0 ? 'Active workspace' : 'Ready for first service'}
+                    </p>
+                  </div>
+                </div>
+
+                {servicesCount > 0 && (
+                  <p className="mt-4 text-xs font-semibold text-stone-500">Delete disabled until all services are removed.</p>
+                )}
+
+                {isExpanded && (
+                  <div className="mt-6 border-t border-stone-200 pt-5">
+                    <div className="flex items-center justify-between gap-4">
+                      <h4 className="text-sm font-black uppercase tracking-[0.16em] text-neutral-700">Services in project</h4>
+                      <button onClick={() => navigate(`/deploy?projectId=${project._id}`)} className="btn-primary px-3 py-2">
+                        <HiPlus className="h-4 w-4" />
+                        Deploy here
+                      </button>
+                    </div>
+
+                    {servicesCount === 0 ? (
+                      <p className="mt-4 rounded-lg border border-dashed border-stone-300 bg-stone-50 p-5 text-sm text-stone-600">
+                        No services added yet.
+                      </p>
+                    ) : (
+                      <div className="mt-4 space-y-3">
+                        {project.services.map((service) => (
+                          <button
+                            key={service._id}
+                            onClick={() => navigate(`/services/${service._id}`)}
+                            className="flex w-full items-center justify-between gap-4 rounded-lg border border-black/10 bg-white p-4 text-left transition hover:border-teal-300 hover:bg-teal-50"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-black text-neutral-950">{service.name}</p>
+                              <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                                Branch: {service.gitBranch || 'main'}
+                              </p>
                             </div>
-                            <button
-                              onClick={() => navigate(`/services/${service._id}`)}
-                              className="text-blue-400 hover:text-blue-300 text-xs"
-                            >
-                              View Service
-                            </button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  <button
-                    onClick={() => navigate(`/deploy?projectId=${project._id}`)}
-                    className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white text-sm font-semibold py-2 rounded-lg"
-                  >
-                    + Deploy New Service in this Project
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+                            <div className="flex items-center gap-3">
+                              <StatusBadge status={service.status || 'pending'} />
+                              <HiArrowRight className="h-4 w-4 text-teal-700" />
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </article>
+            );
+          })}
         </div>
       )}
     </div>

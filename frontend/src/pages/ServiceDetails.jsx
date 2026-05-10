@@ -1,6 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { HiArrowLeft, HiOutlineTrash, HiArrowPathRoundedSquare } from 'react-icons/hi2';
+import { useNavigate, useParams } from 'react-router-dom';
+import {
+  HiArrowLeft,
+  HiArrowPathRoundedSquare,
+  HiArrowTopRightOnSquare,
+  HiCommandLine,
+  HiOutlineTrash,
+  HiPencilSquare,
+} from 'react-icons/hi2';
 import StatusBadge from '../components/StatusBadge';
 import api, { serviceAPI } from '../utils/api';
 
@@ -28,6 +35,8 @@ export default function ServiceDetails() {
 
   useEffect(() => {
     fetchService();
+    // Service reloads are keyed by route id; other state updates happen inside fetchService.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const fetchService = async () => {
@@ -37,10 +46,8 @@ export default function ServiceDetails() {
       setService(returnedService);
       setDeployments(response.data.deployments || []);
 
-      // Auto-fill bulk env editor with existing environment variables /
-      // allow users to paste and update directly.
       if (returnedService?.environmentVariables) {
-        const lines = returnedService.environmentVariables.map(ev => `${ev.key}=${ev.value}`);
+        const lines = returnedService.environmentVariables.map((ev) => `${ev.key}=${ev.value}`);
         setEnvBulkText(lines.join('\n'));
       } else {
         setEnvBulkText('');
@@ -60,14 +67,12 @@ export default function ServiceDetails() {
       const response = await api.post(`/services/${id}/redeploy`);
       setError('');
 
-      // Auto-navigation to deployment logs for the new deployment
       const deploymentId = response.data?.deployment?._id;
       if (deploymentId) {
         navigate(`/deployments/${deploymentId}/logs`);
         return;
       }
 
-      // Fallback: refresh service and deployments
       await fetchService();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to redeploy service');
@@ -167,7 +172,6 @@ export default function ServiceDetails() {
       const key = line.slice(0, equalsIndex).trim();
       let value = line.slice(equalsIndex + 1).trim();
 
-      // Remove optional quotes
       if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
         value = value.slice(1, -1);
       }
@@ -183,10 +187,8 @@ export default function ServiceDetails() {
   const handleApplyEnvBulk = async () => {
     const parsed = parseDotEnv(envBulkText);
     const newKeys = Object.keys(parsed);
-
-    // key-oriented update, plus deletion of keys removed from the raw env text
     const existingKeys = service?.environmentVariables?.map((ev) => ev.key) || [];
-    const keysToDelete = existingKeys.filter((k) => !newKeys.includes(k));
+    const keysToDelete = existingKeys.filter((key) => !newKeys.includes(key));
 
     if (!newKeys.length && !keysToDelete.length) {
       setEnvBulkStatus('No changes detected');
@@ -194,11 +196,9 @@ export default function ServiceDetails() {
     }
 
     try {
-      // Set or update parsed entries
       const setRequests = newKeys.map((key) => serviceAPI.setEnv(id, { key, value: parsed[key] }));
       await Promise.all(setRequests);
 
-      // Delete obsolete keys not present in .env text
       const deleteRequests = keysToDelete.map((key) => serviceAPI.deleteEnv(id, key));
       await Promise.all(deleteRequests);
 
@@ -242,351 +242,262 @@ export default function ServiceDetails() {
 
   if (loading) {
     return (
-      <div className="animate-pulse space-y-8">
-        <div className="h-12 bg-slate-700 rounded-lg w-48" />
-        <div className="h-80 bg-slate-700 rounded-lg" />
+      <div className="space-y-6">
+        <div className="h-12 w-48 animate-pulse rounded-lg bg-white/70" />
+        <div className="h-80 animate-pulse rounded-lg bg-white/70" />
       </div>
     );
   }
 
   if (!service) {
     return (
-      <div className="text-center py-12">
-        <p className="text-slate-400 mb-4">Service not found</p>
-        <button
-          onClick={() => navigate('/services')}
-          className="text-blue-400 hover:text-blue-300"
-        >
+      <div className="surface p-12 text-center">
+        <p className="text-lg font-black text-neutral-950">Service not found</p>
+        <button onClick={() => navigate('/services')} className="btn-primary mt-5">
           Back to Services
         </button>
       </div>
     );
   }
 
+  const detailItems = [
+    ['Branch', service.gitBranch || 'main'],
+    ['Build Command', service.buildCommand || 'npm run build'],
+    ['Start Command', service.startCommand || 'npm start'],
+    ['Root Directory', service.rootDirectory || '/'],
+    ['Healthcheck Path', service.healthCheckPath || '/'],
+    ['Port', service.port ?? 'N/A'],
+    ['Region', service.region || 'us-east-1'],
+    [
+      'Instance',
+      `${service.instanceType?.type || 'free'} - ${service.instanceType?.cpus || 0.1} CPUs / ${service.instanceType?.memory || 512}${service.instanceType?.memoryType || 'MB'}`,
+    ],
+  ];
+
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <button
-        onClick={() => navigate('/services')}
-        className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
-      >
-        <HiArrowLeft className="w-5 h-5" />
+      <button onClick={() => navigate('/services')} className="btn-secondary px-3">
+        <HiArrowLeft className="h-4 w-4" />
         Back to Services
       </button>
 
-      {/* Service Info */}
-      <div className="bg-slate-800 border border-slate-700 rounded-lg p-8">
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-white">{service.name}</h1>
-            <p className="text-slate-400 mt-2">{service.gitRepositoryUrl}</p>
-            {service.project?.name && (
-              <button
-                onClick={() => navigate('/projects')}
-                className="mt-2 text-blue-400 hover:text-blue-300 text-sm"
-              >
-                Project: {service.project.name} (ID: {service.project.projectId})
-              </button>
-            )}
+      <section className="surface overflow-hidden">
+        <div className="bg-neutral-950 p-7 text-white">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-teal-200">Service details</p>
+              <h1 className="mt-3 truncate text-4xl font-black tracking-tight">{service.name}</h1>
+              <p className="mt-3 break-all font-mono text-sm text-stone-300">{service.gitRepositoryUrl}</p>
+              {service.project?.name && (
+                <button
+                  onClick={() => navigate(`/projects?expand=${service.project._id}`)}
+                  className="mt-4 rounded-full bg-teal-300 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-neutral-950"
+                >
+                  {service.project.name} | {service.project.projectId}
+                </button>
+              )}
+            </div>
+            <StatusBadge status={service.status || 'idle'} />
           </div>
-          <StatusBadge status={service.status || 'idle'} />
         </div>
 
-        {error && (
-          <div className="bg-red-900 border border-red-700 rounded-lg p-4 mb-6 text-red-200">
-            {error}
-          </div>
-        )}
+        <div className="p-7">
+          {error && <div className="alert-error mb-6">{error}</div>}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div>
-            <p className="text-sm text-slate-400 mb-1">Branch</p>
-            <p className="text-white font-mono">{service.gitBranch || 'main'}</p>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {detailItems.map(([label, value]) => (
+              <div key={label} className="surface-muted p-4">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-stone-500">{label}</p>
+                <p className="mt-2 break-all font-mono text-sm font-bold text-neutral-950">{value}</p>
+              </div>
+            ))}
           </div>
-          <div>
-            <p className="text-sm text-slate-400 mb-1">Build Command</p>
-            <p className="text-white font-mono text-sm">{service.buildCommand || 'npm run build'}</p>
-          </div>
-          <div>
-            <p className="text-sm text-slate-400 mb-1">Start Command</p>
-            <p className="text-white font-mono text-sm">{service.startCommand || 'npm start'}</p>
-          </div>
-          <div>
-            <p className="text-sm text-slate-400 mb-1">Root Directory</p>
-            <p className="text-white font-mono text-sm">{service.rootDirectory || '/'}</p>
-          </div>
-          <div>
-            <p className="text-sm text-slate-400 mb-1">Healthcheck Path</p>
-            <p className="text-white font-mono text-sm">{service.healthCheckPath || '/'}</p>
-          </div>
-          <div>
-            <p className="text-sm text-slate-400 mb-1">Port</p>
-            <p className="text-white font-mono text-sm">{service.port ?? 'N/A'}</p>
-          </div>
-          <div>
-            <p className="text-sm text-slate-400 mb-1">Region</p>
-            <p className="text-white font-mono text-sm">{service.region || 'us-east-1'}</p>
-          </div>
-          <div>
-            <p className="text-sm text-slate-400 mb-1">Instance</p>
-            <p className="text-white font-mono text-sm">{service.instanceType?.type || 'free'} - {service.instanceType?.cpus || 0.1} CPUs / {service.instanceType?.memory || 512}{service.instanceType?.memoryType || 'MB'}</p>
-          </div>
+
           {service.publicUrl && (
-            <div>
-              <p className="text-sm text-slate-400 mb-1">Public URL</p>
-              <a
-                href={service.publicUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-300 break-all"
-              >
-                {service.publicUrl}
-              </a>
+            <a
+              href={service.publicUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-5 inline-flex items-center gap-2 rounded-lg bg-teal-50 px-4 py-3 text-sm font-black text-teal-800 hover:bg-teal-100"
+            >
+              Open public URL
+              <HiArrowTopRightOnSquare className="h-5 w-5" />
+            </a>
+          )}
+
+          <div className="mt-7 flex flex-col gap-3 border-t border-stone-200 pt-6 sm:flex-row">
+            <button onClick={handleRedeploy} disabled={redeploying} className="btn-primary">
+              <HiArrowPathRoundedSquare className="h-5 w-5" />
+              {redeploying ? 'Redeploying...' : 'Redeploy'}
+            </button>
+            <button
+              onClick={() => deployments.length > 0 && navigate(`/deployments/${deployments[0]._id}/logs`)}
+              disabled={deployments.length === 0}
+              className="btn-secondary"
+            >
+              <HiCommandLine className="h-5 w-5" />
+              View Logs
+            </button>
+            <button onClick={handleEdit} className="btn-secondary">
+              <HiPencilSquare className="h-5 w-5" />
+              Edit
+            </button>
+            <button onClick={handleDelete} className="btn-danger sm:ml-auto">
+              <HiOutlineTrash className="h-5 w-5" />
+              Delete
+            </button>
+          </div>
+
+          {editMode && (
+            <div className="mt-6 rounded-lg border border-black/10 bg-stone-50 p-5">
+              <h3 className="text-lg font-black text-neutral-950">Edit Service Details</h3>
+
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                {[
+                  ['Branch', branchValue, setBranchValue],
+                  ['Build Command', buildCommandValue, setBuildCommandValue],
+                  ['Start Command', startCommandValue, setStartCommandValue],
+                  ['Pre-deploy Command', preDeployCommandValue, setPreDeployCommandValue],
+                  ['Root Directory', rootDirectoryValue, setRootDirectoryValue],
+                  ['Health Check Path', healthCheckPathValue, setHealthCheckPathValue],
+                ].map(([label, value, setter]) => (
+                  <div key={label}>
+                    <label className="field-label">{label}</label>
+                    <input type="text" value={value} onChange={(e) => setter(e.target.value)} className="field-input" />
+                  </div>
+                ))}
+              </div>
+
+              {editStatus && <p className="mt-4 text-sm font-semibold text-stone-700">{editStatus}</p>}
+
+              <div className="mt-5 flex gap-2">
+                <button onClick={handleSaveEdit} className="btn-primary">Save</button>
+                <button onClick={handleCancelEdit} className="btn-secondary">Cancel</button>
+              </div>
             </div>
           )}
         </div>
+      </section>
 
-        {/* Actions */}
-        <div className="flex gap-4 pt-6 border-t border-slate-700">
-          <button
-            onClick={handleRedeploy}
-            disabled={redeploying}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white font-medium px-6 py-2 rounded-lg transition-colors"
-          >
-            <HiArrowPathRoundedSquare className="w-5 h-5" />
-            {redeploying ? 'Redeploying...' : 'Redeploy'}
-          </button>
-          <button
-            onClick={() => deployments.length > 0 && navigate(`/deployments/${deployments[0]._id}/logs`)}
-            disabled={deployments.length === 0}
-            className="px-6 py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-600 text-white rounded-lg transition-colors"
-          >
-            View Logs
-          </button>
-          <button
-            onClick={handleEdit}
-            className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors"
-          >
-            Edit
-          </button>
-          <button
-            onClick={handleDelete}
-            className="flex items-center gap-2 ml-auto px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-          >
-            <HiOutlineTrash className="w-5 h-5" />
-            Delete
-          </button>
+      <section className="surface p-7">
+        <div>
+          <p className="page-kicker">Environment</p>
+          <h2 className="mt-2 text-2xl font-black text-neutral-950">Environment Variables</h2>
+          <p className="page-copy">Add individual keys or sync a full .env block into the service.</p>
         </div>
 
-        {editMode && (
-          <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 mt-4">
-            <h3 className="text-lg font-semibold text-white mb-4">Edit Service Details</h3>
-
-            <div className="space-y-3">
-              <div>
-                <label className="text-sm text-slate-300">Branch</label>
-                <input
-                  type="text"
-                  value={branchValue}
-                  onChange={(e) => setBranchValue(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-slate-300">Build Command</label>
-                <input
-                  type="text"
-                  value={buildCommandValue}
-                  onChange={(e) => setBuildCommandValue(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-slate-300">Start Command</label>
-                <input
-                  type="text"
-                  value={startCommandValue}
-                  onChange={(e) => setStartCommandValue(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-slate-300">Pre-deploy Command</label>
-                <input
-                  type="text"
-                  value={preDeployCommandValue}
-                  onChange={(e) => setPreDeployCommandValue(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-slate-300">Root Directory</label>
-                <input
-                  type="text"
-                  value={rootDirectoryValue}
-                  onChange={(e) => setRootDirectoryValue(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-slate-300">Health Check Path</label>
-                <input
-                  type="text"
-                  value={healthCheckPathValue}
-                  onChange={(e) => setHealthCheckPathValue(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                />
-              </div>
-
-              {editStatus && <p className="text-sm text-slate-300">{editStatus}</p>}
-
-              <div className="flex gap-2">
-                <button
-                  onClick={handleSaveEdit}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg"
-                >
-                  Save
-                </button>
-                <button
-                  onClick={handleCancelEdit}
-                  className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Environment Variables */}
-      <div className="bg-slate-800 border border-slate-700 rounded-lg p-8">
-        <h2 className="text-xl font-semibold text-white mb-6">Environment Variables</h2>
-
-        <form onSubmit={handleAddOrUpdateEnv} className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+        <form onSubmit={handleAddOrUpdateEnv} className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto]">
           <input
             type="text"
-            placeholder="Key"
+            placeholder="KEY"
             value={envKey}
             onChange={(e) => setEnvKey(e.target.value)}
-            className="px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none"
+            className="field-input font-mono"
           />
           <input
             type="text"
-            placeholder="Value"
+            placeholder="value"
             value={envValue}
             onChange={(e) => setEnvValue(e.target.value)}
-            className="px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none"
+            className="field-input font-mono"
           />
-          <button
-            type="submit"
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
-          >
-            Add / Update
-          </button>
+          <button type="submit" className="btn-primary">Add / Update</button>
         </form>
 
-        <div className="mb-4">
-          <label className="text-sm text-slate-300">Bulk .env editor (copy/paste .env format)</label>
+        <div className="mt-5">
+          <label className="field-label">Bulk .env editor</label>
           <textarea
             value={envBulkText}
             onChange={(e) => setEnvBulkText(e.target.value)}
-            placeholder="KEY=VALUE\nOTHER=VALUE"
-            rows={5}
-            className="mt-2 w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none"
+            placeholder={'KEY=VALUE\nOTHER=VALUE'}
+            rows={6}
+            className="mono-box w-full resize-y"
           />
-          <div className="flex gap-2 mt-2 flex-wrap">
-            <button
-              type="button"
-              onClick={handleApplyEnvBulk}
-              className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-semibold"
-            >
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" onClick={handleApplyEnvBulk} className="btn-primary">
               Apply .env
             </button>
-            <button
-              type="button"
-              onClick={handleDeleteEnvBulk}
-              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold"
-            >
+            <button type="button" onClick={handleDeleteEnvBulk} className="btn-danger">
               Bulk Delete
             </button>
-            <button
-              type="button"
-              onClick={() => setEnvBulkText('')}
-              className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg"
-            >
+            <button type="button" onClick={() => setEnvBulkText('')} className="btn-secondary">
               Clear
             </button>
           </div>
-          {envBulkStatus && <p className="text-sm text-slate-300 mt-2">{envBulkStatus}</p>}
+          {envBulkStatus && <p className="mt-3 text-sm font-semibold text-stone-700">{envBulkStatus}</p>}
         </div>
 
-        {envStatus && (
-          <p className="text-sm text-slate-300 mb-4">{envStatus}</p>
-        )}
+        {envStatus && <p className="mt-4 text-sm font-semibold text-stone-700">{envStatus}</p>}
 
         {service.environmentVariables && service.environmentVariables.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2">
             {service.environmentVariables.map((env, idx) => (
-              <div key={idx} className="bg-slate-900 border border-slate-700 rounded-lg p-3 flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs text-slate-400">{env.key}</p>
-                  <p className="text-white text-sm font-mono break-all">{env.value}</p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEnvKey(env.key);
-                      setEnvValue(env.value);
-                    }}
-                    className="text-xs bg-yellow-600 text-white px-2 py-1 rounded hover:bg-yellow-500"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteEnv(env.key)}
-                    className="text-xs bg-red-600 text-white px-2 py-1 rounded hover:bg-red-500"
-                  >
-                    Delete
-                  </button>
+              <div key={idx} className="rounded-lg border border-black/10 bg-neutral-950 p-4 text-white">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-black uppercase tracking-[0.16em] text-teal-200">{env.key}</p>
+                    <p className="mt-2 break-all font-mono text-sm text-stone-200">{env.value}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEnvKey(env.key);
+                        setEnvValue(env.value);
+                      }}
+                      className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-black text-white hover:bg-white/[0.15]"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteEnv(env.key)}
+                      className="rounded-lg bg-rose-500/20 px-3 py-1.5 text-xs font-black text-rose-100 hover:bg-rose-500/30"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-slate-400">No environment variables yet. Add one above.</p>
+          <p className="mt-6 rounded-lg border border-dashed border-stone-300 bg-stone-50 p-5 text-sm font-semibold text-stone-600">
+            No environment variables yet. Add one above.
+          </p>
         )}
-      </div>
+      </section>
 
-      {/* Deployment History */}
-      <div className="bg-slate-800 border border-slate-700 rounded-lg p-8">
-        <h2 className="text-xl font-semibold text-white mb-6">Deployment History</h2>
+      <section className="surface p-7">
+        <div>
+          <p className="page-kicker">History</p>
+          <h2 className="mt-2 text-2xl font-black text-neutral-950">Deployment History</h2>
+        </div>
+
         {deployments.length === 0 ? (
-          <p className="text-slate-400">No deployments yet</p>
+          <p className="mt-6 rounded-lg border border-dashed border-stone-300 bg-stone-50 p-5 text-sm font-semibold text-stone-600">
+            No deployments yet.
+          </p>
         ) : (
-          <div className="space-y-4">
+          <div className="mt-6 divide-y divide-stone-200">
             {deployments.slice(0, 10).map((deployment) => (
-              <div
+              <button
                 key={deployment._id}
-                className="flex items-center justify-between p-4 bg-slate-700 rounded-lg cursor-pointer hover:bg-slate-600 transition-colors"
-                onClick={() =>
-                  navigate(`/deployments/${deployment._id}/logs`)
-                }
+                className="flex w-full items-center justify-between gap-4 py-4 text-left transition hover:bg-stone-50"
+                onClick={() => navigate(`/deployments/${deployment._id}/logs`)}
               >
                 <div>
-                  <p className="text-white font-medium">
+                  <p className="font-black text-neutral-950">
                     {new Date(deployment.createdAt).toLocaleDateString()} {new Date(deployment.createdAt).toLocaleTimeString()}
                   </p>
-                  <p className="text-sm text-slate-400">Commit: {deployment.commitHash?.substring(0, 7)}</p>
+                  <p className="mt-1 font-mono text-xs text-stone-500">Commit: {deployment.commitHash?.substring(0, 7) || 'N/A'}</p>
                 </div>
                 <StatusBadge status={deployment.status || 'idle'} />
-              </div>
+              </button>
             ))}
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

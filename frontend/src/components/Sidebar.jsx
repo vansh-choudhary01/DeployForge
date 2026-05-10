@@ -15,23 +15,35 @@ export default function Sidebar() {
     { path: '/dashboard', label: 'Dashboard', icon: HiOutlineSquares2X2 },
     { path: '/projects', label: 'Projects', icon: HiOutlineCodeBracket },
     { path: '/services', label: 'Services', icon: HiOutlineRocketLaunch },
+    { path: '/deploy', label: 'Deploy', icon: HiOutlineSparkles },
     { path: '/settings', label: 'Settings', icon: HiOutlineCog },
   ];
 
-  const isActive = (path) => location.pathname.startsWith(path);
+  const isActive = (path) => {
+    if (path === '/services') return location.pathname.startsWith('/services');
+    return location.pathname === path || location.pathname.startsWith(`${path}/`);
+  };
 
   return (
-    <aside className="fixed left-0 top-0 w-64 h-screen bg-slate-900 border-r border-slate-700 overflow-y-auto">
-      {/* Logo */}
-      <div className="p-6 border-b border-slate-700">
-        <div className="flex items-center gap-2">
-          <HiOutlineSparkles className="w-6 h-6 text-blue-500" />
-          <h1 className="text-xl font-bold text-white">Deploy</h1>
-        </div>
+    <aside className="fixed left-0 top-0 z-30 hidden h-screen w-72 overflow-y-auto border-r border-white/10 bg-neutral-950 px-4 py-5 text-white shadow-2xl lg:block">
+      <Link to="/" className="flex items-center gap-3 rounded-lg px-2 pb-5">
+        <span className="grid h-11 w-11 place-items-center rounded-lg bg-teal-300 text-neutral-950">
+          <HiOutlineSparkles className="h-6 w-6" />
+        </span>
+        <span>
+          <span className="block text-xl font-black tracking-tight">Deploy</span>
+          <span className="block text-xs uppercase tracking-[0.24em] text-stone-400">Cloud desk</span>
+        </span>
+      </Link>
+
+      <div className="mt-2 rounded-lg border border-white/10 bg-white/[0.04] p-4">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-teal-200">Workspace</p>
+        <p className="mt-2 text-sm leading-5 text-stone-300">
+          Deploy GitHub repos, group services by project, and watch releases move through the pipeline.
+        </p>
       </div>
 
-      {/* Navigation */}
-      <nav className="p-4 space-y-2">
+      <nav className="mt-5 space-y-1">
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.path);
@@ -39,18 +51,28 @@ export default function Sidebar() {
             <Link
               key={item.path}
               to={item.path}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+              className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-bold transition ${
                 active
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-300 hover:bg-slate-800'
+                  ? 'bg-teal-300 text-neutral-950 shadow-lg shadow-teal-950/20'
+                  : 'text-stone-300 hover:bg-white/[0.07] hover:text-white'
               }`}
             >
-              <Icon className="w-5 h-5" />
+              <Icon className="h-5 w-5" />
               <span>{item.label}</span>
             </Link>
           );
         })}
       </nav>
+
+      <div className="absolute bottom-5 left-4 right-4 rounded-lg border border-white/10 bg-white/[0.04] p-4">
+        <div className="flex items-center gap-3">
+          <div className="grid h-10 w-10 place-items-center rounded-lg bg-white text-neutral-950 font-black">D</div>
+          <div>
+            <p className="text-sm font-bold text-white">Deploy stack</p>
+            <p className="text-xs text-stone-400">Server and static hosting</p>
+          </div>
+        </div>
+      </div>
     </aside>
   );
 }

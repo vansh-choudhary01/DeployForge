@@ -1,48 +1,97 @@
-import React, { useState } from 'react';
-import { HiBell, HiOutlineMoon, HiOutlineSun, HiArrowRightOnRectangle } from 'react-icons/hi2';
-import { useNavigate } from 'react-router-dom';
+import React, { useContext } from 'react';
+import {
+  HiArrowRightOnRectangle,
+  HiBell,
+  HiOutlineCodeBracket,
+  HiOutlineRocketLaunch,
+  HiOutlineSquares2X2,
+} from 'react-icons/hi2';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { AuthContext } from '../contexts/AuthContext';
 
 export default function Navbar() {
-  const [isDark, setIsDark] = useState(true);
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user, logout } = useContext(AuthContext);
 
-  const handleLogout = () => {
-    localStorage.removeItem('authToken');
+  const navItems = [
+    { path: '/dashboard', label: 'Dashboard', icon: HiOutlineSquares2X2 },
+    { path: '/projects', label: 'Projects', icon: HiOutlineCodeBracket },
+    { path: '/services', label: 'Services', icon: HiOutlineRocketLaunch },
+  ];
+
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
 
+  const initials = user?.fullName
+    ? user.fullName
+        .split(' ')
+        .map((part) => part[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : 'D';
+
   return (
-    <header className="fixed top-0 left-64 right-0 h-16 bg-slate-900 border-b border-slate-700 flex items-center justify-between px-8">
-      <div className="flex-1" />
+    <header className="fixed left-0 right-0 top-0 z-20 border-b border-black/10 bg-[#f8f7f2]/[0.86] px-4 py-3 backdrop-blur-xl lg:left-72 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-teal-700">Deployment console</p>
+          <p className="truncate text-sm font-semibold text-stone-600">
+            {location.pathname === '/dashboard'
+              ? 'Overview'
+              : location.pathname.split('/').filter(Boolean).join(' / ') || 'Workspace'}
+          </p>
+        </div>
 
-      <div className="flex items-center gap-4">
-        {/* Notifications */}
-        <button className="relative p-2 text-slate-400 hover:text-white transition-colors">
-          <HiBell className="w-5 h-5" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-        </button>
+        <nav className="hidden items-center gap-1 rounded-lg border border-black/10 bg-white/80 p-1 shadow-sm md:flex lg:hidden">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const active = location.pathname.startsWith(item.path);
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                title={item.label}
+                className={`rounded-lg px-3 py-2 text-sm font-bold transition ${
+                  active ? 'bg-neutral-950 text-white' : 'text-stone-600 hover:bg-stone-100 hover:text-neutral-950'
+                }`}
+              >
+                <Icon className="h-5 w-5" />
+              </Link>
+            );
+          })}
+        </nav>
 
-        {/* Theme Toggle */}
-        <button
-          onClick={() => setIsDark(!isDark)}
-          className="p-2 text-slate-400 hover:text-white transition-colors"
-        >
-          {isDark ? (
-            <HiOutlineSun className="w-5 h-5" />
-          ) : (
-            <HiOutlineMoon className="w-5 h-5" />
-          )}
-        </button>
+        <div className="flex items-center gap-3">
+          <Link to="/deploy" className="btn-primary hidden sm:inline-flex">
+            <HiOutlineRocketLaunch className="h-5 w-5" />
+            New service
+          </Link>
 
-        {/* User Avatar */}
-        <div className="flex items-center gap-3 pl-4 border-l border-slate-700">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600" />
+          <button title="Notifications" className="relative grid h-10 w-10 place-items-center rounded-lg border border-black/10 bg-white text-stone-700 shadow-sm transition hover:border-teal-300 hover:text-neutral-950">
+            <HiBell className="h-5 w-5" />
+            <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500" />
+          </button>
+
+          <div className="hidden items-center gap-3 rounded-lg border border-black/10 bg-white px-3 py-2 shadow-sm sm:flex">
+            <div className="grid h-8 w-8 place-items-center rounded-lg bg-neutral-950 text-xs font-black text-white">
+              {initials}
+            </div>
+            <div className="max-w-32">
+              <p className="truncate text-sm font-bold text-neutral-950">{user?.fullName || 'Deploy user'}</p>
+              <p className="truncate text-xs text-stone-500">{user?.email || 'Signed in'}</p>
+            </div>
+          </div>
+
           <button
             onClick={handleLogout}
-            className="p-2 text-slate-400 hover:text-white transition-colors"
+            className="grid h-10 w-10 place-items-center rounded-lg border border-black/10 bg-white text-stone-700 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
             title="Logout"
           >
-            <HiArrowRightOnRectangle className="w-5 h-5" />
+            <HiArrowRightOnRectangle className="h-5 w-5" />
           </button>
         </div>
       </div>

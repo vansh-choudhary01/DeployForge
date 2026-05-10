@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { HiArrowLeft } from 'react-icons/hi2';
+import { useNavigate, useParams } from 'react-router-dom';
+import { HiArrowLeft, HiArrowTopRightOnSquare, HiCommandLine } from 'react-icons/hi2';
 import { io } from 'socket.io-client';
 import LogViewer from '../components/LogViewer';
 import StatusBadge from '../components/StatusBadge';
@@ -29,7 +29,7 @@ export default function DeploymentLogs() {
 
   const appendLog = (entry) => {
     setLogs((prevLogs) => {
-      const exists = prevLogs.some((l) => l.message === entry.message);
+      const exists = prevLogs.some((log) => log.message === entry.message);
       if (exists) return prevLogs;
       return [...prevLogs, entry];
     });
@@ -37,7 +37,7 @@ export default function DeploymentLogs() {
 
   const addLogEntries = (newMessages) => {
     setLogs((prevLogs) => {
-      const keyCache = new Set(prevLogs.map((l) => l.message));
+      const keyCache = new Set(prevLogs.map((log) => log.message));
       const merged = [...prevLogs];
       newMessages.forEach((msg) => {
         const log = typeof msg === 'string' ? formatLogEntry(msg) : msg;
@@ -52,7 +52,6 @@ export default function DeploymentLogs() {
   };
 
   useEffect(() => {
-    // Initialize socket connection with credentials so cookies are sent, plus reconnect behavior
     const socketUrl = process.env.REACT_APP_SOCKET_URL || 'http://localhost:4000';
     const newSocket = io(socketUrl, {
       withCredentials: true,
@@ -85,7 +84,6 @@ export default function DeploymentLogs() {
       newSocket.emit('deployment:subscribe', { deploymentId });
     });
 
-    // Listen for previous logs sent upon subscription
     newSocket.on('deployment:previous-logs', (data) => {
       if (data.deploymentId === deploymentId && Array.isArray(data.logs)) {
         addLogEntries(data.logs);
@@ -93,28 +91,30 @@ export default function DeploymentLogs() {
       }
     });
 
-    // Listen for live deployment logs
     newSocket.on('deployment:log', (data) => {
       if (data.deploymentId === deploymentId) {
         appendLog(formatLogEntry(data.log));
       }
     });
 
-    // Listen for deployment status updates
     newSocket.on('deployment:started', (data) => {
       if (data.deploymentId === deploymentId) {
-        setDeployment(prev => prev ? { ...prev, status: data.status } : null);
+        setDeployment((prev) => (prev ? { ...prev, status: data.status } : null));
       }
     });
 
     newSocket.on('deployment:completed', (data) => {
       if (data.deploymentId === deploymentId) {
-        setDeployment(prev => prev ? { 
+        setDeployment((prev) =>
+          prev
+            ? {
                 ...prev,
                 status: data.status,
-          deployedUrl: data.deployedUrl
-        } : null);
-        fetchDeployment(); // Refresh deployment details
+                deployedUrl: data.deployedUrl,
+              }
+            : null
+        );
+        fetchDeployment();
       }
     });
 
@@ -131,13 +131,14 @@ export default function DeploymentLogs() {
 
     setSocket(newSocket);
 
-    // Fetch initial deployment data
     fetchDeployment();
     fetchLogs();
 
     return () => {
       newSocket.disconnect();
     };
+    // The socket subscription should be recreated only when the deployment id changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deploymentId]);
 
   const fetchDeployment = async () => {
@@ -153,8 +154,7 @@ export default function DeploymentLogs() {
     try {
       const response = await deploymentAPI.getLogs(deploymentId);
       const logLines = response.data.data || [];
-      
-      // Parse log lines into objects
+
       const parsedLogs = logLines.map((line) => {
         if (typeof line === 'string') {
           return {
@@ -174,107 +174,108 @@ export default function DeploymentLogs() {
     }
   };
 
+  const isSocketConnected = socket?.connected;
+
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <button
-        onClick={() => navigate(-1)}
-        className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
-      >
-        <HiArrowLeft className="w-5 h-5" />
+      <button onClick={() => navigate(-1)} className="btn-secondary px-3">
+        <HiArrowLeft className="h-4 w-4" />
         Back
       </button>
 
-      {/* Deployment Info */}
       {deployment && (
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-8">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-white">Deployment Logs</h1>
-              <p className="text-slate-400 mt-1">
-                {new Date(deployment.createdAt).toLocaleDateString()} {new Date(deployment.createdAt).toLocaleTimeString()}
-              </p>
+        <section className="surface overflow-hidden">
+          <div className="bg-neutral-950 p-7 text-white">
+            <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-teal-200">Deployment logs</p>
+                <h1 className="mt-3 text-4xl font-black tracking-tight">Build output stream</h1>
+                <p className="mt-3 text-sm text-stone-300">
+                  {new Date(deployment.createdAt).toLocaleDateString()} {new Date(deployment.createdAt).toLocaleTimeString()}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${
+                  isSocketConnected ? 'bg-emerald-400/[0.18] text-emerald-100' : 'bg-amber-400/[0.18] text-amber-100'
+                }`}>
+                  {isSocketConnected ? 'socket live' : 'socket reconnecting'}
+                </span>
+                <StatusBadge status={deployment.status} />
+              </div>
             </div>
-            <StatusBadge status={deployment.status} />
           </div>
 
-          {deployment.service && (
-            <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <p className="text-xs text-slate-400">Service</p>
-                <p className="text-white font-medium">{deployment.service.name}</p>
+          <div className="p-7">
+            {deployment.service && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="surface-muted p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-stone-500">Service</p>
+                  <p className="mt-2 font-black text-neutral-950">{deployment.service.name}</p>
+                </div>
+                <div className="surface-muted p-4 md:col-span-2">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-stone-500">Repo</p>
+                  <p className="mt-2 break-all font-mono text-sm font-bold text-neutral-950">{deployment.service.gitRepositoryUrl}</p>
+                </div>
+                {deployment.service.publicUrl && (
+                  <a
+                    href={deployment.service.publicUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg bg-teal-50 px-4 py-3 text-sm font-black text-teal-800 hover:bg-teal-100 md:col-span-3"
+                  >
+                    Open public URL
+                    <HiArrowTopRightOnSquare className="h-5 w-5" />
+                  </a>
+                )}
               </div>
-              <div>
-                <p className="text-xs text-slate-400">Repo</p>
-                <p className="text-white font-mono break-all">{deployment.service.gitRepositoryUrl}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-400">Public URL</p>
-                <a
-                  href={deployment.service.publicUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-400 hover:text-blue-300 break-all"
-                >
-                  {deployment.service.publicUrl}
-                </a>
-              </div>
-            </div>
-          )}
+            )}
 
-          {error && (
-            <div className="bg-red-900 border border-red-700 rounded-lg p-4 text-red-200">
-              {error}
-            </div>
-          )}
-        </div>
+            {error && <div className="alert-error mt-5">{error}</div>}
+          </div>
+        </section>
       )}
 
-      {/* Logs Viewer */}
-      <div className="bg-slate-800 border border-slate-700 rounded-lg p-8">
-        <h2 className="text-lg font-semibold text-white mb-4">Build Output</h2>
+      <section className="surface p-7">
+        <div className="mb-5 flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-lg bg-neutral-950 text-teal-200">
+            <HiCommandLine className="h-6 w-6" />
+          </span>
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-teal-700">Console</p>
+            <h2 className="text-2xl font-black text-neutral-950">Build Output</h2>
+          </div>
+        </div>
         <LogViewer logs={logs} isLoading={loading && logs.length === 0} />
-      </div>
+      </section>
 
-      {/* Log Stats */}
       {deployment && (
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-8">
-          <h2 className="text-lg font-semibold text-white mb-4">Deployment Details</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <p className="text-sm text-slate-400 mb-1">Commit</p>
-              <p className="text-white font-mono break-all">{deployment.commitHash || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-400 mb-1">Branch</p>
-              <p className="text-white">{deployment.branch || deployment.service?.gitBranch || 'main'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-400 mb-1">Status</p>
+        <section className="surface p-7">
+          <div>
+            <p className="page-kicker">Deployment details</p>
+            <h2 className="mt-2 text-2xl font-black text-neutral-950">Release metadata</h2>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {[
+              ['Commit', deployment.commitHash || 'N/A'],
+              ['Branch', deployment.branch || deployment.service?.gitBranch || 'main'],
+              ['Duration', deployment.duration ? `${deployment.duration}s` : 'Still running...'],
+              ['Service Start', deployment.service?.startCommand || 'N/A'],
+              ['Health Check', deployment.service?.healthCheckPath || 'N/A'],
+            ].map(([label, value]) => (
+              <div key={label} className="surface-muted p-4">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-stone-500">{label}</p>
+                <p className="mt-2 break-all font-mono text-sm font-bold text-neutral-950">{value}</p>
+              </div>
+            ))}
+            <div className="surface-muted p-4">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-stone-500">Status</p>
               <div className="mt-2">
                 <StatusBadge status={deployment.status || 'pending'} />
               </div>
             </div>
-            <div>
-              <p className="text-sm text-slate-400 mb-1">Duration</p>
-              <p className="text-white">
-                {deployment.duration ? `${deployment.duration}s` : 'Still running...'}
-              </p>
-            </div>
-            {deployment.service && (
-              <>
-                <div>
-                  <p className="text-sm text-slate-400 mb-1">Service Start</p>
-                  <p className="text-white font-mono break-all">{deployment.service.startCommand || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-400 mb-1">Health Check</p>
-                  <p className="text-white">{deployment.service.healthCheckPath || 'N/A'}</p>
-                </div>
-              </>
-            )}
           </div>
-        </div>
+        </section>
       )}
     </div>
   );

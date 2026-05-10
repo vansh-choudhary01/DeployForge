@@ -1,9 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { HiArrowLeft, HiPlus, HiOutlineTrash, HiCheck, HiXMark } from 'react-icons/hi2';
-import { serviceAPI, projectAPI } from '../utils/api.js';
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  HiArrowLeft,
+  HiCheck,
+  HiOutlineClipboardDocument,
+  HiOutlineCodeBracketSquare,
+  HiOutlineRocketLaunch,
+  HiOutlineTrash,
+  HiPlus,
+  HiXMark,
+} from 'react-icons/hi2';
+import { projectAPI, serviceAPI } from '../utils/api.js';
 
-// GitHub URL regex pattern: https://github.com/username/repo or https://github.com/username/repo.git
 const GITHUB_URL_REGEX = /^https:\/\/github\.com\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+(?:\.git)?\/?$/;
 
 export default function DeployService() {
@@ -27,7 +35,7 @@ export default function DeployService() {
     startCommand: 'npm start',
     healthCheckPath: '/',
     deploymentType: 'server',
-    buildDirectory: 'build'
+    buildDirectory: 'build',
   });
 
   useEffect(() => {
@@ -35,8 +43,10 @@ export default function DeployService() {
 
     const query = new URLSearchParams(location.search);
     const projectIdFromQuery = query.get('projectId');
-    if (projectIdFromQuery && formData.projectId !== projectIdFromQuery) {
-      setFormData((prev) => ({ ...prev, projectId: projectIdFromQuery }));
+    if (projectIdFromQuery) {
+      setFormData((prev) => (
+        prev.projectId === projectIdFromQuery ? prev : { ...prev, projectId: projectIdFromQuery }
+      ));
     }
   }, [location.search]);
 
@@ -56,7 +66,6 @@ export default function DeployService() {
       return;
     }
 
-    // Check regex format first
     if (!GITHUB_URL_REGEX.test(formData.repo)) {
       setError('Invalid GitHub URL format. Expected: https://github.com/username/repo.git');
       setUrlFormatValid(false);
@@ -68,11 +77,10 @@ export default function DeployService() {
     setSuccess('');
 
     try {
-      // Call backend to verify the repository actually exists
       const response = await serviceAPI.validateRepo(formData.repo);
-      
+
       if (response.status === 200) {
-        setSuccess(`✓ Repository verified successfully`);
+        setSuccess('Repository verified successfully');
         setRepoValidated(true);
         setUrlFormatValid(true);
       }
@@ -87,18 +95,16 @@ export default function DeployService() {
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    
+
     if (name === 'repo') {
-      // Real-time validation as user types
       const isFormatValid = GITHUB_URL_REGEX.test(value);
       setUrlFormatValid(isFormatValid);
-      
-      // Clear validation states when user modifies URL
+
       if (repoValidated) {
         setRepoValidated(false);
         setSuccess('');
       }
-      
+
       setError('');
     }
 
@@ -117,9 +123,9 @@ export default function DeployService() {
   };
 
   const handleEnvVarChange = (index, field, value) => {
-    const newEnvVars = [...envVars];
-    newEnvVars[index][field] = value;
-    setEnvVars(newEnvVars);
+    const nextEnvVars = [...envVars];
+    nextEnvVars[index][field] = value;
+    setEnvVars(nextEnvVars);
   };
 
   const parseEnvFile = (content) => {
@@ -128,15 +134,10 @@ export default function DeployService() {
 
     for (const line of lines) {
       const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
 
-      // Skip empty lines and comments
-      if (!trimmed || trimmed.startsWith('#')) {
-        continue;
-      }
-
-      // Split by first = sign
       const [key, ...valueParts] = trimmed.split('=');
-      const value = valueParts.join('='); // In case value contains =
+      const value = valueParts.join('=');
 
       if (key.trim()) {
         parsed.push({
@@ -152,7 +153,7 @@ export default function DeployService() {
   const handlePasteEnvFile = (e) => {
     e.preventDefault();
     const pastedContent = e.clipboardData.getData('text');
-    
+
     if (!pastedContent.trim()) {
       alert('No content pasted');
       return;
@@ -165,7 +166,6 @@ export default function DeployService() {
       return;
     }
 
-    // Add parsed variables to existing ones
     setEnvVars([...envVars, ...parsed]);
     alert(`${parsed.length} environment variable(s) added`);
   };
@@ -181,9 +181,8 @@ export default function DeployService() {
         startCommand: formData.deploymentType === 'server' ? formData.startCommand : undefined,
         environmentVariables: envVars,
       };
-      
+
       const response = await serviceAPI.deploy(deployData);
-      // Navigate to deployment logs to show live progress
       navigate(`/deployments/${response.data.deployment._id}/logs`);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to deploy service');
@@ -193,392 +192,339 @@ export default function DeployService() {
   };
 
   return (
-    <div className="max-w-3xl space-y-8">
-      {/* Header */}
-      <button
-        onClick={() => navigate('/services')}
-        className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
-      >
-        <HiArrowLeft className="w-5 h-5" />
+    <div className="mx-auto max-w-5xl space-y-8">
+      <button onClick={() => navigate('/services')} className="btn-secondary px-3">
+        <HiArrowLeft className="h-4 w-4" />
         Back to Services
       </button>
 
-      {/* Title */}
-      <div>
-        <h1 className="text-3xl font-bold text-white">Deploy New Service</h1>
-        <p className="text-slate-400 mt-2">Configure and deploy a new service from your repository</p>
-      </div>
-
-      {/* Step 1: Repository Validation */}
-      <div className="bg-slate-800 border border-slate-700 rounded-lg p-8 space-y-4">
-        <h2 className="text-lg font-semibold text-white">Source Code</h2>
-        
-        {error && (
-          <div className="bg-red-900 border border-red-700 rounded-lg p-4 text-red-200 text-sm">
-            {error}
-          </div>
-        )}
-
-        {success && (
-          <div className="bg-green-900 border border-green-700 rounded-lg p-4 text-green-200 text-sm">
-            ✓ {success}
-          </div>
-        )}
-
-        <div className="space-y-3">
-          <label className="block text-sm font-medium text-white">Repository URL *</label>
-          <p className="text-xs text-slate-400">Format: https://github.com/username/repo.git</p>
-          
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                name="repo"
-                value={formData.repo}
-                onChange={handleInputChange}
-                disabled={repoValidated}
-                placeholder="https://github.com/vansh-choudhary01/Workflow-test.git"
-                className={`flex-1 px-4 py-2 bg-slate-700 border rounded-lg text-white placeholder-slate-500 focus:outline-none font-mono text-sm transition-colors ${
-                  formData.repo === '' 
-                    ? 'border-slate-600' 
-                    : urlFormatValid 
-                    ? 'border-green-500 focus:border-green-400' 
-                    : 'border-red-500 focus:border-red-400'
-                } ${repoValidated ? 'opacity-50 cursor-not-allowed' : ''}`}
-              />
-              <button
-                type="button"
-                onClick={handleValidateRepo}
-                disabled={validating || repoValidated || !formData.repo || !urlFormatValid}
-                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white font-medium rounded-lg transition-colors disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {validating ? 'Checking...' : repoValidated ? 'Verified ✓' : 'Validate'}
-              </button>
-            </div>
-            
-            {/* Real-time format validation feedback */}
-            {formData.repo && !repoValidated && (
-              <div className={`flex items-center gap-2 text-sm px-3 py-2 rounded ${
-                urlFormatValid 
-                  ? 'bg-green-900 bg-opacity-30 text-green-300' 
-                  : 'bg-red-900 bg-opacity-30 text-red-300'
-              }`}>
-                {urlFormatValid ? (
-                  <>
-                    <HiCheck className="w-4 h-4" />
-                    <span>URL format is valid</span>
-                  </>
-                ) : (
-                  <>
-                    <HiXMark className="w-4 h-4" />
-                    <span>Invalid URL format</span>
-                  </>
-                )}
-              </div>
-            )}
-            
-            {/* Validation status messages */}
-            {error && (
-              <div className="bg-red-900 bg-opacity-30 border border-red-700 rounded-lg p-3 text-red-300 text-sm flex items-center gap-2">
-                <HiXMark className="w-4 h-4 flex-shrink-0" />
-                {error}
-              </div>
-            )}
-
-            {success && (
-              <div className="bg-green-900 bg-opacity-30 border border-green-700 rounded-lg p-3 text-green-300 text-sm flex items-center gap-2">
-                <HiCheck className="w-4 h-4 flex-shrink-0" />
-                {success}
-              </div>
-            )}
-          </div>
-          
-          {repoValidated && (
-            <button
-              type="button"
-              onClick={() => {
-                setRepoValidated(false);
-                setFormData({ ...formData, repo: '' });
-                setSuccess('');
-                setUrlFormatValid(false);
-              }}
-              className="text-sm text-slate-400 hover:text-white transition-colors"
-            >
-              ↻ Change Repository
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Step 2: Configuration (shown only after validation) */}
-      {repoValidated && (
-      <form onSubmit={handleDeploy} className="bg-slate-800 border border-slate-700 rounded-lg p-8 space-y-6">
-          {/* Basic Info */}
-          <div className="space-y-4 pb-6 border-b border-slate-700">
-            <h2 className="text-lg font-semibold text-white">Configuration</h2>
-
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Project *
-              </label>
-              <select
-                name="projectId"
-                value={formData.projectId}
-                onChange={handleInputChange}
-                required
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-              >
-                <option value="">Select a project</option>
-                {projects.map((project) => (
-                  <option key={project._id} value={project._id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Branch *
-                </label>
-                <input
-                  type="text"
-                  name="branch"
-                  value={formData.branch}
-                  onChange={handleInputChange}
-                  required
-                  placeholder="main"
-                  className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Root Directory
-                </label>
-                <input
-                  type="text"
-                  name="rootDirectory"
-                  value={formData.rootDirectory}
-                  onChange={handleInputChange}
-                  placeholder="/"
-                  className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Build Commands */}
-          <div className="space-y-4 pb-6 border-b border-slate-700">
-            <h2 className="text-lg font-semibold text-white">Build & Deploy</h2>
-
-            <div className="text-xs text-slate-400">
-              Commands below will run from: <span className="text-white font-mono">{formData.rootDirectory || '/'}</span>
-            </div>
-
-          <div>
-            <label className="block text-sm font-medium text-white mb-2">
-              Pre-Deploy Command *
-            </label>
-            <input
-              type="text"
-              name="preDeployCommand"
-              value={formData.preDeployCommand}
-              onChange={handleInputChange}
-              placeholder="npm install"
-              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-sm"
-            />
-            <p className="text-xs text-slate-400 mt-1">
-              {formData.rootDirectory || '/'} <span className="text-slate-200">$</span> {formData.preDeployCommand}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[0.78fr_1.22fr]">
+        <aside className="space-y-4">
+          <div className="surface bg-neutral-950 p-6 text-white">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-teal-200">Deploy service</p>
+            <h1 className="mt-3 text-4xl font-black tracking-tight">Prepare a clean release.</h1>
+            <p className="mt-4 text-sm leading-6 text-stone-300">
+              Validate the GitHub repository first, then configure runtime commands, static build output, health checks,
+              and environment variables.
             </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Build Command
-              </label>
-              <input
-                type="text"
-                name="buildCommand"
-                value={formData.buildCommand}
-                onChange={handleInputChange}
-                placeholder="npm run build"
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-sm"
-              />
-              <p className="text-xs text-slate-400 mt-1">
-                {formData.rootDirectory || '/'} <span className="text-slate-200">$</span> {formData.buildCommand || '<no build command>'}
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Deployment Type * <span>[server(node, python, etc) or static (React, Vue, Angular, etc)]</span>
-              </label>
-              <select
-                name="deploymentType"
-                value={formData.deploymentType}
-                onChange={handleInputChange}
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                placeholder="server(node, python, etc) or static (React, Vue, Angular, etc)"
-              >
-                <option value="server">Server</option>
-                <option value="static">Static</option>
-              </select>
-            </div>
-
-            {formData.deploymentType === 'server' ? (
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Start Command *
-              </label>
-              <input
-                type="text"
-                name="startCommand"
-                value={formData.startCommand}
-                onChange={handleInputChange}
-                disabled={formData.deploymentType !== 'server'}
-                required
-                placeholder="npm start"
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-sm"
-              />
-              <p className="text-xs text-slate-400 mt-1">
-                {formData.rootDirectory || '/'} <span className="text-slate-200">$</span> {formData.startCommand}
-              </p>
-            </div>
-            ) : (
-              <div className="p-4 bg-slate-700 rounded border border-slate-600">
-                <p className="text-sm text-slate-300">
-                  For static sites, we will automatically run the build command and serve the contents of the build directory. Make sure to specify the correct build command and that it outputs to a given build directory.
-                </p>
-                <label className="block text-sm font-medium text-white mt-4 mb-2">
-                  Build Directory
-                </label>
-                <input
-                  type="text"
-                  name="buildDirectory"
-                  value={formData.buildDirectory}
-                  onChange={handleInputChange}
-                  placeholder="build"
-                  className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-            )}
-
-
-
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Health Check Path *
-              </label>
-              <input
-                type="text"
-                name="healthCheckPath"
-                value={formData.healthCheckPath}
-                onChange={handleInputChange}
-                placeholder="/"
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
-              />
-            </div>
           </div>
 
-          {/* Environment Variables */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Environment Variables</h2>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleAddEnvVar}
-                  className="flex items-center gap-2 text-blue-400 hover:text-blue-300 text-sm"
-                >
-                  <HiPlus className="w-4 h-4" />
-                  Add Variable
-                </button>
-              </div>
-            </div>
-
-            {/* Paste .env file section */}
-            <div className="bg-slate-700 bg-opacity-50 border border-slate-600 rounded-lg p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-slate-300">Paste .env file</label>
-                <span className="text-xs text-slate-400">Comments will be ignored</span>
-              </div>
-              <textarea
-                onPaste={handlePasteEnvFile}
-                placeholder={`# Example environment variables
-# Copy and paste your .env file here
-REACT_APP_API_URL=http://localhost:4000/api
-REACT_APP_ENVIRONMENT=development
-# REACT_APP_DEBUG=true`}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-xs h-32 resize-none"
-              />
-              <p className="text-xs text-slate-400">Simply paste your .env file content here and variables will be extracted automatically (comments and empty lines are ignored)</p>
-            </div>
-
-            <div className="space-y-3">
-              {envVars.length > 0 && (
-                <div className="flex items-center justify-between px-3 py-2 bg-slate-700 bg-opacity-30 rounded">
-                  <span className="text-sm text-slate-300">{envVars.length} variable(s) configured</span>
-                  {envVars.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setEnvVars([])}
-                      className="text-xs text-red-400 hover:text-red-300"
-                    >
-                      Clear All
-                    </button>
-                  )}
-                </div>
-              )}
-              
-              {envVars.map((envVar, index) => (
-                <div key={index} className="flex gap-3">
-                  <input
-                    type="text"
-                    placeholder="KEY"
-                    value={envVar.key}
-                    onChange={(e) => handleEnvVarChange(index, 'key', e.target.value)}
-                    className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-sm"
-                  />
-                  <input
-                    type="text"
-                    placeholder="value"
-                    value={envVar.value}
-                    onChange={(e) => handleEnvVarChange(index, 'value', e.target.value)}
-                    className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveEnvVar(index)}
-                    className="p-2 hover:bg-slate-700 rounded transition-colors text-red-400"
-                  >
-                    <HiOutlineTrash className="w-5 h-5" />
-                  </button>
+          <div className="surface p-5">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-stone-500">Flow</p>
+            <div className="mt-4 space-y-3">
+              {['Validate repository', 'Choose project', 'Tune commands', 'Stream live logs'].map((item, index) => (
+                <div key={item} className="flex items-center gap-3">
+                  <span className={`grid h-8 w-8 place-items-center rounded-lg text-xs font-black ${
+                    index === 0 && repoValidated ? 'bg-teal-100 text-teal-800' : 'bg-stone-100 text-stone-500'
+                  }`}>
+                    {index + 1}
+                  </span>
+                  <p className="text-sm font-bold text-neutral-800">{item}</p>
                 </div>
               ))}
             </div>
           </div>
+        </aside>
 
-          {/* Actions */}
-          <div className="flex gap-4 pt-6 border-t border-slate-700">
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white font-medium py-3 rounded-lg transition-colors"
-            >
-              {loading ? 'Deploying...' : 'Deploy Service'}
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate('/services')}
-              className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
+        <main className="space-y-5">
+          <section className="surface p-6">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-lg bg-teal-100 text-teal-800">
+                <HiOutlineCodeBracketSquare className="h-6 w-6" />
+              </span>
+              <div>
+                <h2 className="text-xl font-black text-neutral-950">Source Code</h2>
+                <p className="text-sm text-stone-600">Format: https://github.com/username/repo.git</p>
+              </div>
+            </div>
+
+            {(error || success) && (
+              <div className="mt-5">
+                {error && <div className="alert-error">{error}</div>}
+                {success && <div className="alert-success">{success}</div>}
+              </div>
+            )}
+
+            <div className="mt-5">
+              <label className="field-label">Repository URL *</label>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+                <input
+                  type="text"
+                  name="repo"
+                  value={formData.repo}
+                  onChange={handleInputChange}
+                  disabled={repoValidated}
+                  placeholder="https://github.com/username/repo.git"
+                  className={`field-input font-mono ${
+                    formData.repo === ''
+                      ? ''
+                      : urlFormatValid
+                      ? 'border-emerald-400 focus:border-emerald-500 focus:ring-emerald-100'
+                      : 'border-rose-400 focus:border-rose-500 focus:ring-rose-100'
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={handleValidateRepo}
+                  disabled={validating || repoValidated || !formData.repo || !urlFormatValid}
+                  className="btn-primary"
+                >
+                  {validating ? 'Checking...' : repoValidated ? 'Verified' : 'Validate'}
+                </button>
+              </div>
+
+              {formData.repo && !repoValidated && (
+                <div className={`mt-3 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold ${
+                  urlFormatValid ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                }`}>
+                  {urlFormatValid ? <HiCheck className="h-4 w-4" /> : <HiXMark className="h-4 w-4" />}
+                  {urlFormatValid ? 'URL format is valid' : 'Invalid URL format'}
+                </div>
+              )}
+
+              {repoValidated && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRepoValidated(false);
+                    setFormData({ ...formData, repo: '' });
+                    setSuccess('');
+                    setUrlFormatValid(false);
+                  }}
+                  className="mt-3 text-sm font-bold text-stone-600 hover:text-neutral-950"
+                >
+                  Change Repository
+                </button>
+              )}
+            </div>
+          </section>
+
+          {repoValidated && (
+            <form onSubmit={handleDeploy} className="space-y-5">
+              <section className="surface p-6">
+                <h2 className="text-xl font-black text-neutral-950">Configuration</h2>
+
+                <div className="mt-5">
+                  <label className="field-label">Project *</label>
+                  <select
+                    name="projectId"
+                    value={formData.projectId}
+                    onChange={handleInputChange}
+                    required
+                    className="field-input"
+                  >
+                    <option value="">Select a project</option>
+                    {projects.map((project) => (
+                      <option key={project._id} value={project._id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="field-label">Branch *</label>
+                    <input
+                      type="text"
+                      name="branch"
+                      value={formData.branch}
+                      onChange={handleInputChange}
+                      required
+                      placeholder="main"
+                      className="field-input"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="field-label">Root Directory</label>
+                    <input
+                      type="text"
+                      name="rootDirectory"
+                      value={formData.rootDirectory}
+                      onChange={handleInputChange}
+                      placeholder="/"
+                      className="field-input"
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section className="surface p-6">
+                <h2 className="text-xl font-black text-neutral-950">Build and Deploy</h2>
+                <p className="mt-2 text-sm text-stone-600">
+                  Commands run from <span className="font-mono font-bold text-neutral-950">{formData.rootDirectory || '/'}</span>.
+                </p>
+
+                <div className="mt-5 space-y-5">
+                  <div>
+                    <label className="field-label">Pre-Deploy Command *</label>
+                    <input
+                      type="text"
+                      name="preDeployCommand"
+                      value={formData.preDeployCommand}
+                      onChange={handleInputChange}
+                      placeholder="npm install"
+                      className="field-input font-mono"
+                    />
+                    <p className="mt-2 font-mono text-xs text-stone-500">{formData.rootDirectory || '/'} $ {formData.preDeployCommand}</p>
+                  </div>
+
+                  <div>
+                    <label className="field-label">Build Command</label>
+                    <input
+                      type="text"
+                      name="buildCommand"
+                      value={formData.buildCommand}
+                      onChange={handleInputChange}
+                      placeholder="npm run build"
+                      className="field-input font-mono"
+                    />
+                    <p className="mt-2 font-mono text-xs text-stone-500">
+                      {formData.rootDirectory || '/'} $ {formData.buildCommand || '<no build command>'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="field-label">Deployment Type *</label>
+                    <select
+                      name="deploymentType"
+                      value={formData.deploymentType}
+                      onChange={handleInputChange}
+                      className="field-input"
+                    >
+                      <option value="server">Server workload</option>
+                      <option value="static">Static site</option>
+                    </select>
+                  </div>
+
+                  {formData.deploymentType === 'server' ? (
+                    <div>
+                      <label className="field-label">Start Command *</label>
+                      <input
+                        type="text"
+                        name="startCommand"
+                        value={formData.startCommand}
+                        onChange={handleInputChange}
+                        required
+                        placeholder="npm start"
+                        className="field-input font-mono"
+                      />
+                      <p className="mt-2 font-mono text-xs text-stone-500">{formData.rootDirectory || '/'} $ {formData.startCommand}</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-teal-200 bg-teal-50 p-4">
+                      <p className="text-sm leading-6 text-teal-900">
+                        For static sites, the build command runs first and the configured build directory is served.
+                      </p>
+                      <label className="field-label mt-4">Build Directory</label>
+                      <input
+                        type="text"
+                        name="buildDirectory"
+                        value={formData.buildDirectory}
+                        onChange={handleInputChange}
+                        placeholder="build"
+                        className="field-input"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="field-label">Health Check Path *</label>
+                    <input
+                      type="text"
+                      name="healthCheckPath"
+                      value={formData.healthCheckPath}
+                      onChange={handleInputChange}
+                      placeholder="/"
+                      className="field-input"
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section className="surface p-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-black text-neutral-950">Environment Variables</h2>
+                    <p className="mt-1 text-sm text-stone-600">Paste a .env file or add variables one by one.</p>
+                  </div>
+                  <button type="button" onClick={handleAddEnvVar} className="btn-secondary">
+                    <HiPlus className="h-4 w-4" />
+                    Add Variable
+                  </button>
+                </div>
+
+                <div className="mt-5 rounded-lg border border-black/10 bg-neutral-950 p-4 text-white">
+                  <div className="flex items-center justify-between gap-4">
+                    <label className="text-sm font-black text-white">Paste .env file</label>
+                    <span className="text-xs font-semibold text-stone-400">Comments ignored</span>
+                  </div>
+                  <textarea
+                    onPaste={handlePasteEnvFile}
+                    placeholder={`# Example
+REACT_APP_API_URL=http://localhost:4000/api
+NODE_ENV=production`}
+                    className="mt-3 h-32 w-full resize-none rounded-lg border border-white/10 bg-black px-4 py-3 font-mono text-xs text-stone-100 outline-none placeholder:text-stone-500 focus:border-teal-300"
+                  />
+                  <p className="mt-2 flex items-center gap-2 text-xs text-stone-400">
+                    <HiOutlineClipboardDocument className="h-4 w-4" />
+                    Paste content here and variables will be extracted automatically.
+                  </p>
+                </div>
+
+                {envVars.length > 0 && (
+                  <div className="mt-5 space-y-3">
+                    <div className="flex items-center justify-between rounded-lg bg-stone-100 px-3 py-2">
+                      <span className="text-sm font-bold text-stone-700">{envVars.length} variable(s) configured</span>
+                      <button type="button" onClick={() => setEnvVars([])} className="text-xs font-black text-rose-600 hover:text-rose-800">
+                        Clear All
+                      </button>
+                    </div>
+
+                    {envVars.map((envVar, index) => (
+                      <div key={index} className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto]">
+                        <input
+                          type="text"
+                          placeholder="KEY"
+                          value={envVar.key}
+                          onChange={(e) => handleEnvVarChange(index, 'key', e.target.value)}
+                          className="field-input font-mono"
+                        />
+                        <input
+                          type="text"
+                          placeholder="value"
+                          value={envVar.value}
+                          onChange={(e) => handleEnvVarChange(index, 'value', e.target.value)}
+                          className="field-input font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveEnvVar(index)}
+                          className="btn-danger px-3"
+                          title="Remove variable"
+                        >
+                          <HiOutlineTrash className="h-5 w-5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button type="submit" disabled={loading} className="btn-primary flex-1 py-3">
+                  <HiOutlineRocketLaunch className="h-5 w-5" />
+                  {loading ? 'Deploying...' : 'Deploy Service'}
+                </button>
+                <button type="button" onClick={() => navigate('/services')} className="btn-secondary">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

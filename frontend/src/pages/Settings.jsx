@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { HiOutlineExclamationCircle } from 'react-icons/hi2';
+import { HiOutlineExclamationCircle, HiOutlineUserCircle } from 'react-icons/hi2';
 import { userAPI } from '../utils/api.js';
 
 export default function Settings() {
@@ -31,67 +31,66 @@ export default function Settings() {
 
   if (loading) {
     return (
-      <div className="max-w-2xl space-y-8">
-        <h1 className="text-3xl font-bold text-white">Settings</h1>
-        <p className="text-slate-400 mt-2">Loading user info...</p>
+      <div className="max-w-3xl space-y-6">
+        <div>
+          <p className="page-kicker">Settings</p>
+          <h1 className="page-title">Loading account...</h1>
+        </div>
+        <div className="h-72 animate-pulse rounded-lg bg-white/70" />
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl space-y-8">
+    <div className="max-w-3xl space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-white">Settings</h1>
-        <p className="text-slate-400 mt-2">Manage your account preferences</p>
+        <p className="page-kicker">Settings</p>
+        <h1 className="page-title">Account preferences.</h1>
+        <p className="page-copy">View the account profile currently connected to this deployment workspace.</p>
       </div>
 
-      {error && (
-        <div className="p-4 text-red-100 bg-red-700 rounded-lg">{error}</div>
-      )}
+      {error && <div className="alert-error">{error}</div>}
 
-      <form className="bg-slate-800 border border-slate-700 rounded-lg p-8 space-y-6">
-        {/* Account Section */}
-        <div className="space-y-4 pb-6 border-b border-slate-700">
-          <h2 className="text-lg font-semibold text-white">Account</h2>
-
-          <div>
-            <label className="block text-sm font-medium text-white mb-2">Full Name</label>
-            <input
-              type="text"
-              name="fullName"
-              disabled
-              value={user.fullName}
-              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-white mb-2">Email</label>
-            <input
-              type="email"
-              name="email"
-              disabled
-              value={user.email}
-              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white"
-            />
+      <section className="surface overflow-hidden">
+        <div className="bg-neutral-950 p-7 text-white">
+          <div className="flex items-center gap-4">
+            <span className="grid h-14 w-14 place-items-center rounded-lg bg-teal-300 text-neutral-950">
+              <HiOutlineUserCircle className="h-8 w-8" />
+            </span>
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-teal-200">Profile</p>
+              <h2 className="mt-1 text-2xl font-black">{user.fullName || 'Deploy user'}</h2>
+            </div>
           </div>
         </div>
 
-        {/* Danger Zone */}
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-red-400 flex items-center gap-2">
-            <HiOutlineExclamationCircle className="w-5 h-5" />
-            Danger Zone
-          </h2>
+        <form className="p-7">
+          <div className="space-y-5 border-b border-stone-200 pb-7">
+            <div>
+              <label className="field-label">Full Name</label>
+              <input type="text" name="fullName" disabled value={user.fullName || ''} className="field-input" />
+            </div>
 
-          <button
-            type="button"
-            className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-          >
-            Delete Account
-          </button>
-        </div>
-      </form>
+            <div>
+              <label className="field-label">Email</label>
+              <input type="email" name="email" disabled value={user.email || ''} className="field-input" />
+            </div>
+          </div>
+
+          <div className="mt-7 rounded-lg border border-rose-200 bg-rose-50 p-5">
+            <h2 className="flex items-center gap-2 text-lg font-black text-rose-700">
+              <HiOutlineExclamationCircle className="h-5 w-5" />
+              Danger Zone
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-rose-700/80">
+              Account deletion is presented here for the future account lifecycle flow.
+            </p>
+            <button type="button" className="btn-danger mt-4 w-full">
+              Delete Account
+            </button>
+          </div>
+        </form>
+      </section>
     </div>
   );
 }

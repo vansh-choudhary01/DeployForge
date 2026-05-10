@@ -13,29 +13,29 @@ export default function LogViewer({ logs = [], isLoading = false }) {
     <div className="relative">
       <div
         ref={scrollRef}
-        className="h-96 bg-slate-950 border border-slate-700 rounded-lg p-4 overflow-y-auto font-mono text-sm space-y-1"
+        className="h-96 overflow-y-auto rounded-lg border border-neutral-800 bg-neutral-950 p-4 font-mono text-sm shadow-inner shadow-black/40"
       >
         {logs && logs.length > 0 ? (
           logs.map((log, index) => (
             <div
               key={index}
-              className={`${
+              className={`border-b border-white/[0.04] py-1 ${
                 log.type === 'error'
-                  ? 'text-red-400'
+                  ? 'text-rose-300'
                   : log.type === 'success'
-                  ? 'text-green-400'
+                  ? 'text-emerald-300'
                   : log.type === 'warning'
-                  ? 'text-yellow-400'
-                  : 'text-slate-300'
+                  ? 'text-amber-300'
+                  : 'text-stone-300'
               }`}
             >
-              <span className="text-slate-500">{log.timestamp || ''}</span> {log.message}
+              <span className="text-teal-300/70">{log.timestamp || ''}</span> {log.message}
             </div>
           ))
         ) : isLoading ? (
-          <div className="text-slate-500">Waiting for logs...</div>
+          <div className="text-stone-500">Waiting for logs...</div>
         ) : (
-          <div className="text-slate-500">No logs available</div>
+          <div className="text-stone-500">No logs available</div>
         )}
       </div>
     </div>

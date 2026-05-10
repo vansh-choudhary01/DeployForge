@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import './App.css';
 import './tailwind.css';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthContext, AuthProvider } from './contexts/AuthContext';
 
 // Components
 import Sidebar from './components/Sidebar';
@@ -18,15 +18,30 @@ import Projects from './pages/Projects';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Landing from './pages/Landing';
 
 function ProtectedLayout({ children }) {
+  const { isAuthenticated, loading } = useContext(AuthContext);
+
+  if (loading) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-[#f8f7f2] text-neutral-950">
+        <div className="surface px-6 py-5 text-sm font-semibold">Opening your workspace...</div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
   return (
-    <div className="flex">
+    <div className="min-h-screen bg-[#f8f7f2]">
       <Sidebar />
-      <div className="flex-1 ml-64">
+      <div className="lg:pl-72">
         <Navbar />
-        <main className="mt-16 p-8 bg-slate-900 min-h-screen">
-          <div className="max-w-7xl mx-auto">{children}</div>
+        <main className="min-h-screen px-4 pb-12 pt-24 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl">{children}</div>
         </main>
       </div>
     </div>
@@ -36,8 +51,10 @@ function ProtectedLayout({ children }) {
 function App() {
   return (
     <AuthProvider>
-      <Router>
+      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
+          <Route path="/" element={<Landing />} />
+
           {/* Auth Routes - No Sidebar/Navbar */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -101,7 +118,6 @@ function App() {
         />
 
         {/* Default redirect */}
-        <Route path="/" element={<Navigate to="/dashboard" />} />
         <Route path="*" element={<Navigate to="/login" />} />
       </Routes>
     </Router>

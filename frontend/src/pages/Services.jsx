@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HiPlus, HiArrowPath, HiTrash } from 'react-icons/hi2';
+import {
+  HiArrowPath,
+  HiArrowTopRightOnSquare,
+  HiPlus,
+  HiTrash,
+  HiOutlineRocketLaunch,
+} from 'react-icons/hi2';
 import StatusBadge from '../components/StatusBadge';
 import { serviceAPI } from '../utils/api.js';
 
@@ -9,9 +15,6 @@ export default function Services() {
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedService, setSelectedService] = useState(null);
-  const [showEnvForm, setShowEnvForm] = useState(false);
-  const [envData, setEnvData] = useState({ key: '', value: '' });
   const [actionLoading, setActionLoading] = useState({});
 
   useEffect(() => {
@@ -34,7 +37,7 @@ export default function Services() {
 
   const handleRedeploy = async (serviceId) => {
     try {
-      setActionLoading({ ...actionLoading, [serviceId]: 'redeploy' });
+      setActionLoading((prev) => ({ ...prev, [serviceId]: 'redeploy' }));
       const response = await serviceAPI.redeploy(serviceId);
       setError('');
       const deploymentId = response.data?.deployment?._id;
@@ -42,12 +45,11 @@ export default function Services() {
         navigate(`/deployments/${deploymentId}/logs`);
         return;
       }
-      // fallback: refresh service list
       await fetchServices();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to redeploy service');
     } finally {
-      setActionLoading({ ...actionLoading, [serviceId]: null });
+      setActionLoading((prev) => ({ ...prev, [serviceId]: null }));
     }
   };
 
@@ -55,31 +57,14 @@ export default function Services() {
     if (!window.confirm('Are you sure you want to delete this service?')) return;
 
     try {
-      setActionLoading({ ...actionLoading, [serviceId]: 'delete' });
+      setActionLoading((prev) => ({ ...prev, [serviceId]: 'delete' }));
       await serviceAPI.delete(serviceId);
-      setServices(services.filter(s => s._id !== serviceId));
+      setServices((current) => current.filter((service) => service._id !== serviceId));
       setError('');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to delete service');
     } finally {
-      setActionLoading({ ...actionLoading, [serviceId]: null });
-    }
-  };
-
-  const handleAddEnv = async (serviceId) => {
-    if (!envData.key.trim() || !envData.value.trim()) {
-      setError('Key and value are required');
-      return;
-    }
-
-    try {
-      await serviceAPI.setEnv(serviceId, { key: envData.key, value: envData.value });
-      setEnvData({ key: '', value: '' });
-      setShowEnvForm(false);
-      setError('');
-      // Refresh service if implemented
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to set environment variable');
+      setActionLoading((prev) => ({ ...prev, [serviceId]: null }));
     }
   };
 
@@ -89,6 +74,7 @@ export default function Services() {
     try {
       await serviceAPI.deleteEnv(serviceId, key);
       setError('');
+      await fetchServices();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to delete environment variable');
     }
@@ -96,119 +82,136 @@ export default function Services() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-white">Services</h1>
-          <p className="text-slate-400 mt-2">Manage all your deployed services</p>
+          <p className="page-kicker">Services</p>
+          <h1 className="page-title">Every deployed workload in one place.</h1>
+          <p className="page-copy">Inspect status, branch, project ownership, ports, env vars, and launch redeploys.</p>
         </div>
-        <button
-          onClick={() => navigate('/deploy')}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg transition-colors"
-        >
-          <HiPlus className="w-5 h-5" />
+        <button onClick={() => navigate('/deploy')} className="btn-primary">
+          <HiPlus className="h-5 w-5" />
           New Service
         </button>
       </div>
 
-      {/* Error */}
-      {error && (
-        <div className="bg-red-900 border border-red-700 rounded-lg p-4 text-red-200">
-          {error}
-        </div>
-      )}
+      {error && <div className="alert-error">{error}</div>}
 
-      {/* Services Grid */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {[...Array(6)].map((_, i) => (
-            <div
-              key={i}
-              className="h-64 bg-slate-700 rounded-lg animate-pulse"
-            />
+            <div key={i} className="h-72 animate-pulse rounded-lg bg-white/70" />
           ))}
         </div>
       ) : services.length === 0 ? (
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-12 text-center">
-          <p className="text-slate-400 mb-4">No services deployed yet</p>
-          <button
-            onClick={() => navigate('/deploy')}
-            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg transition-colors"
-          >
-            <HiPlus className="w-5 h-5" />
+        <div className="surface p-12 text-center">
+          <span className="mx-auto grid h-14 w-14 place-items-center rounded-lg bg-teal-100 text-teal-800">
+            <HiOutlineRocketLaunch className="h-8 w-8" />
+          </span>
+          <h2 className="mt-5 text-2xl font-black text-neutral-950">No services deployed yet</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">
+            Deploy your first GitHub repository and the service will appear here with logs, commands, and runtime details.
+          </p>
+          <button onClick={() => navigate('/deploy')} className="btn-primary mt-6">
+            <HiPlus className="h-5 w-5" />
             Deploy Your First Service
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {services.map((service) => (
-            <div
+            <article
               key={service._id}
               onClick={() => navigate(`/services/${service._id}`)}
-              className="bg-slate-800 border border-slate-700 rounded-lg p-6 hover:border-slate-600 transition cursor-pointer"
+              className="surface group flex min-h-[17rem] cursor-pointer flex-col p-6 transition hover:-translate-y-1 hover:border-teal-300"
             >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-white">{service.name}</h3>
-                  <p className="text-sm text-slate-400 mt-1">{service.gitBranch || 'main'}</p>
-                  {service.project?.name && (
-                    <p className="text-xs text-blue-400 hover:text-blue-300 cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/projects?expand=${service.project._id}`); }}>
-                      Project: {service.project.name}
-                    </p>
-                  )}
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="truncate text-xl font-black text-neutral-950">{service.name}</h3>
+                  <p className="mt-1 truncate text-xs font-bold uppercase tracking-[0.16em] text-stone-500">
+                    {service.gitBranch || 'main'} branch
+                  </p>
+                </div>
+                <StatusBadge status={service.status || 'pending'} />
+              </div>
+
+              {service.project?.name && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/projects?expand=${service.project._id}`);
+                  }}
+                  className="mt-4 w-fit rounded-full bg-teal-50 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-teal-800"
+                >
+                  {service.project.name}
+                </button>
+              )}
+
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <div className="surface-muted p-3">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Port</p>
+                  <p className="mt-2 font-mono text-sm font-black text-neutral-950">{service.port || 'pending'}</p>
+                </div>
+                <div className="surface-muted p-3">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Type</p>
+                  <p className="mt-2 text-sm font-black capitalize text-neutral-950">{service.deploymentType || 'server'}</p>
                 </div>
               </div>
 
-              <div className="space-y-3 mb-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-400">Status</span>
-                  <StatusBadge status={service.status || 'pending'} />
-                </div>
+              {service.publicUrl && (
+                <a
+                  href={service.publicUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-teal-700 hover:text-teal-900"
+                >
+                  Visit service
+                  <HiArrowTopRightOnSquare className="h-4 w-4" />
+                </a>
+              )}
 
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-400">Port</span>
-                  <span className="text-sm text-white font-mono">{service.port}</span>
-                </div>
-              </div>
-
-              {/* Environment Variables */}
               {service.environmentVariables && service.environmentVariables.length > 0 && (
-                <div className="mb-4 p-3 bg-slate-700 rounded border border-slate-600">
-                  <p className="text-xs text-slate-300 font-medium mb-2">Env Variables</p>
-                  {service.environmentVariables.map((env, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-xs text-slate-400 mb-1">
-                      <span>{env.key}</span>
+                <div className="mt-4 rounded-lg border border-black/10 bg-neutral-950 p-3 text-white">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-teal-200">
+                    {service.environmentVariables.length} env variable(s)
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {service.environmentVariables.slice(0, 4).map((env, idx) => (
                       <button
-                        onClick={() => handleDeleteEnv(service._id, env.key)}
-                        className="text-red-400 hover:text-red-300 transition"
+                        key={`${env.key}-${idx}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteEnv(service._id, env.key);
+                        }}
+                        className="rounded-full bg-white/10 px-2 py-1 text-xs font-semibold text-stone-200 hover:bg-rose-500/20 hover:text-rose-100"
+                        title="Click to delete"
                       >
-                        ✕
+                        {env.key}
                       </button>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
 
-              {/* Actions */}
-              <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className="mt-auto flex gap-2 pt-5" onClick={(e) => e.stopPropagation()}>
                 <button
                   onClick={() => handleRedeploy(service._id)}
                   disabled={actionLoading[service._id] === 'redeploy'}
-                  className="flex-1 bg-yellow-600 hover:bg-yellow-700 disabled:bg-slate-600 text-white text-sm font-medium py-2 px-3 rounded flex items-center justify-center gap-2 transition"
+                  className="btn-secondary flex-1 px-3"
                 >
-                  <HiArrowPath className="w-4 h-4" />
+                  <HiArrowPath className="h-4 w-4" />
                   {actionLoading[service._id] === 'redeploy' ? 'Redeploying...' : 'Redeploy'}
                 </button>
                 <button
                   onClick={() => handleDeleteService(service._id)}
                   disabled={actionLoading[service._id] === 'delete'}
-                  className="flex-1 bg-red-900 hover:bg-red-800 disabled:bg-slate-600 text-red-200 text-sm font-medium py-2 px-3 rounded flex items-center justify-center gap-2 transition"
+                  className="btn-danger px-3"
+                  title="Delete service"
                 >
-                  <HiTrash className="w-4 h-4" />
-                  {actionLoading[service._id] === 'delete' ? 'Deleting...' : 'Delete'}
+                  <HiTrash className="h-4 w-4" />
                 </button>
               </div>
-            </div>
+            </article>
           ))}
         </div>
       )}

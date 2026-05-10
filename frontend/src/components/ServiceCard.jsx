@@ -7,41 +7,41 @@ export default function ServiceCard({ service }) {
   return (
     <Link
       to={`/services/${service._id}`}
-      className="block bg-slate-800 border border-slate-700 rounded-lg p-6 hover:border-slate-600 transition-colors"
+      className="surface block p-6 transition hover:-translate-y-1 hover:border-teal-300"
     >
-      <div className="flex items-start justify-between mb-4">
+      <div className="mb-4 flex items-start justify-between">
         <div className="flex-1">
-          <h3 className="text-lg font-semibold text-white">{service.name}</h3>
-          <p className="text-sm text-slate-400 mt-1">{service.repo}</p>
+          <h3 className="text-lg font-black text-neutral-950">{service.name}</h3>
+          <p className="mt-1 text-sm text-stone-500">{service.repo}</p>
         </div>
-        <button className="p-2 hover:bg-slate-700 rounded transition-colors">
-          <HiEllipsisVertical className="w-5 h-5 text-slate-400" />
+        <button className="rounded-lg p-2 text-stone-500 transition hover:bg-stone-100 hover:text-neutral-950">
+          <HiEllipsisVertical className="h-5 w-5" />
         </button>
       </div>
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-slate-400">Status</span>
+          <span className="text-sm font-semibold text-stone-500">Status</span>
           <StatusBadge status={service.status || 'idle'} />
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-sm text-slate-400">Branch</span>
-          <span className="text-sm text-white font-mono">{service.branch || 'main'}</span>
+          <span className="text-sm font-semibold text-stone-500">Branch</span>
+          <span className="font-mono text-sm font-bold text-neutral-950">{service.branch || 'main'}</span>
         </div>
 
         {service.url && (
-          <div className="flex items-center justify-between pt-3 border-t border-slate-700">
-            <span className="text-sm text-slate-400">URL</span>
+          <div className="flex items-center justify-between border-t border-stone-200 pt-3">
+            <span className="text-sm font-semibold text-stone-500">URL</span>
             <a
               href={service.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 text-sm"
+              className="inline-flex items-center gap-1 text-sm font-bold text-teal-700 hover:text-teal-900"
               onClick={(e) => e.stopPropagation()}
             >
               Visit
-              <HiArrowTopRightOnSquare className="w-4 h-4" />
+              <HiArrowTopRightOnSquare className="h-4 w-4" />
             </a>
           </div>
         )}
