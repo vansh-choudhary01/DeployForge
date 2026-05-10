@@ -4,8 +4,9 @@ import { executeSSHCommands, waitForSSH } from "../helpers/ssh.js";
 
 const client = new EC2Client({ region: process.env.AWS_REGION || "ap-south-1" });
 
-export async function provisionNewEC2() {
+export async function provisionNewEC2(pushLog) {
     console.log('Provisioning new EC2 instance...');
+    pushLog('Provisioning new EC2 instance...');
     const command = new RunInstancesCommand({
         ImageId: process.env.EC2_AMI_ID,
         InstanceType: process.env.EC2_INSTANCE_TYPE,
@@ -23,6 +24,7 @@ export async function provisionNewEC2() {
     const response = await client.send(command);
     const instanceId = response.Instances[0].InstanceId;
     // console.log('Instance created:', instanceId, '— waiting for it to run...');
+    pushLog(`EC2 instance created, waiting for it to run...`);
     // save to DB
     const ec2 = await Ec2Registry.create({
         instanceId: instanceId,
@@ -39,6 +41,7 @@ export async function provisionNewEC2() {
         { client, maxWaitTime: 120 },
         { InstanceIds: [instanceId] }
     );
+    pushLog(`EC2 instance is now running. Fetching details...`);
 
     const described = await client.send(new DescribeInstancesCommand({ InstanceIds: [instanceId] }));
     const instance = described.Reservations[0].Instances[0];
@@ -47,16 +50,19 @@ export async function provisionNewEC2() {
     // wait for SSH before attempting setup
     await waitForSSH(instance.PublicIpAddress);
     await new Promise(res => setTimeout(res, 20000)); // 20 sec
+    pushLog(`EC2 instance is ready for setup. Starting setup...`);
 
     try {
-        await setupInitialEC2(instance.PublicIpAddress, ec2);
+        await setupInitialEC2(instance.PublicIpAddress, ec2, pushLog);
     } catch (err) {
         console.error('Error during EC2 setup:', err);
+        pushLog(`ERROR: during EC2 setup: ${err.message}`);
         // if setup fails, stop the EC2 to avoid unnecessary costs
+        await Ec2Registry.findByIdAndUpdate(ec2._id, { status: 'stopped' });
         await client.send(new StopInstancesCommand({ InstanceIds: [instanceId] }));
-        ec2.status = 'stopped';
-        await ec2.save();
-        throw err;
+    
+        pushLog(`ERROR: EC2 instance stopped due to setup failure. Please check the logs and try deploy/redeploy again`);
+        return new Error(`EC2 setup failed: ${err.message}`);
     }
 
     // save to DB
@@ -111,30 +117,49 @@ export async function terminateEc2(ec2) {
     await Ec2Registry.findByIdAndDelete(ec2._id);
 }
 
-async function setupInitialEC2(ec2Ip, ec2) {
+async function setupInitialEC2(ec2Ip, ec2, pushLog) {
     const commands = [
+        `echo "PUSH_LOG: Starting EC2 setup..."`,
         `sudo apt-get update -y`,
+        `echo "PUSH_LOG: Updating package list..."`,
         `sudo apt-get install -y docker.io unzip`,
+        `echo "PUSH_LOG: Installing Docker..."`,
         `sudo usermod -aG docker ubuntu`,
+        `echo "PUSH_LOG: Adding user to docker group..."`,
         `sudo systemctl enable docker`,
+        `echo "PUSH_LOG: Starting Docker..."`,
         `sudo systemctl start docker`,
 
+        `echo "PUSH_LOG: Installing Node.js..."`,
         `curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -`,
         `sudo apt-get install -y nodejs`,
 
         // ✅ AWS CLI (correct way)
+        `echo "PUSH_LOG: Installing AWS CLI..."`,
         `curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"`,
         `unzip awscliv2.zip`,
         `sudo ./aws/install`,
 
+        `echo "PUSH_LOG: Checking installed versions..."`,
         `docker --version`,
         `node --version`,
         `npm --version`,
-        `aws --version`
+        `aws --version`,
+        `echo "PUSH_LOG: EC2 setup completed successfully."`
     ];
 
     console.log('Setting up EC2 with initial configurations...');
     ec2.initialLogs = ec2.initialLogs || [];
-    await executeSSHCommands(commands, [], (msg) => { console.log(msg); ec2.initialLogs.push(msg); }, ec2Ip);
+    await executeSSHCommands(
+        commands,
+        [],
+        (msg) => {
+            if (msg.includes('PUSH_LOG:')) {
+                const logMessage = msg.replace('PUSH_LOG:', '').trim();
+                pushLog(logMessage);
+                return;
+            }
+            ec2.initialLogs.push(msg);
+        }, ec2Ip);
     console.log('EC2 setup completed');
 }

@@ -81,7 +81,15 @@ export async function deployFromQueue(deploymentId) {
         }
 
         if ((!service.ec2Host || service.status === "sleeping") && service.subdomain !== 'api') {
-            const bestEc2 = await getBestEc2();
+            const logs = [];
+            logsMap.set(deployment._id.toString(), logs); // Store reference to logs in the map
+
+            // Helper function to push logs and emit via socket.io
+            const pushLog = (message) => {
+                logs.push(message);
+                deploymentLogger(message, service.user.toString(), deployment._id.toString());
+            };
+            const bestEc2 = await getBestEc2(pushLog);
             service.ec2Host = bestEc2;;
             await service.save();
             const totalServices = await Service.countDocuments({ ec2Host: bestEc2._id, status: { $in: ['running', 'waking', 'pending'] } });

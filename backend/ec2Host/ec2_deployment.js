@@ -1,7 +1,7 @@
 import { Ec2Registry } from "../models/ec2Registry.js";
 import { provisionNewEC2 } from "./aws_sdk.js";
 
-export async function getBestEc2() {
+export async function getBestEc2(pushLog) {
     let machine = await Ec2Registry.findOne({
         status: 'active',
         $expr: { $lt: ["$totalServices", "$maxServices"] }
@@ -32,6 +32,6 @@ export async function getBestEc2() {
     }
 
     // if no EC2 has capacity, provision a new one
-    const newEc2 = await provisionNewEC2();
+    const newEc2 = await provisionNewEC2(pushLog);
     return newEc2;
 }
