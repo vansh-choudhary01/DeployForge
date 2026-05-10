@@ -26,6 +26,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.2.3",
     "nodemailer": "^8.0.1",
+    "redis": "^5.12.1",
     "socket.io": "^4.7.2",
     "ssh2": "^1.14.0"
   }

@@ -1,6 +1,5 @@
 import Deployment from "../models/Deployment.js";
 import Service from "../models/Service.js";
-import { io, sockets } from '../index.js';
 import UsedPortAndSubDomain from "../models/UsedPort.js";
 import { collectContainerLogs, detectContainerPort, ensureDockerContainerRunning, isContainerRunning, stopAndRemoveContainer } from "../helpers/docker.js";
 import { getStableSubdomain } from "../helpers/subdomains.js";
@@ -10,6 +9,38 @@ import { setupSubdomain } from "../helpers/nginx.js";
 import { getBestEc2 } from "../ec2Host/ec2_deployment.js";
 import { createEcrRepo } from "../ec2Host/aws_ecr.js";
 import { deployFrontend } from "../s3Host/deployFrontend.js";
+import { RedisService } from "../redis-db/initilize.js";
+import { consumeFromQueue, initializeQueue } from "../RabbitMQ/queue.js";
+import dotenv from "dotenv";
+import mongoose from "mongoose";
+import { createClient } from "redis";
+dotenv.config();
+
+async function connectDB() {
+    try {
+        await mongoose.connect(process.env.MONGO_URI)
+        console.log('MongoDB connected')
+    } catch (err) {
+        console.log(err);
+        process.exit(1);
+    };
+}
+
+connectDB().then(() =>
+    initializeQueue()
+        .then(() => {
+            console.log('Deployment worker connected to RabbitMQ, waiting for messages...');
+            consumeFromQueue(deployFromQueue);
+        })
+        .catch(err => {
+            console.error('Failed to initialize RabbitMQ queue:', err);
+            process.exit(1);
+        })
+);
+
+const redis = await RedisService.create();
+const pubSubRedis = await RedisService.create();
+const pubSubChannel = 'deployment_logs';
 
 // Start deployment worker - polls every 2 seconds for queued deployments
 const DEPLOYMENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes timeout for deployments
@@ -38,6 +69,9 @@ export async function deployFromQueue(deploymentId) {
             let logs = [];
             const pushLog = (message) => {
                 logs.push(message);
+                setTimeout(() => {
+                    redis.batchInsertToList(deployment._id.toString(), logs.splice(0, logs.length)); // Batch insert logs to Redis every second
+                }, 100);
                 deploymentLogger(message, service.user.toString(), deployment._id.toString());
             };
             // For static deployments, we can directly call the frontend deploy function without going through the SSH deployment process
@@ -82,11 +116,13 @@ export async function deployFromQueue(deploymentId) {
 
         if ((!service.ec2Host || service.status === "sleeping") && service.subdomain !== 'api') {
             const logs = [];
-            logsMap.set(deployment._id.toString(), logs); // Store reference to logs in the map
 
             // Helper function to push logs and emit via socket.io
             const pushLog = (message) => {
                 logs.push(message);
+                setTimeout(() => {
+                    redis.batchInsertToList(deployment._id.toString(), logs.splice(0, logs.length)); // Batch insert logs to Redis every second
+                }, 100);
                 deploymentLogger(message, service.user.toString(), deployment._id.toString());
             };
             const bestEc2 = await getBestEc2(pushLog);
@@ -104,49 +140,29 @@ export async function deployFromQueue(deploymentId) {
     }
 };
 
-const logsMap = new Map(); // In-memory map to store logs for each deployment
-
-export const getDeploymentLogs = async (deploymentId, userId) => {
-    const userSocketId = sockets.get(userId);
-
-    // check if the user is the owner of the deployment
-    const deployment = await Deployment.findById(deploymentId);
-    const service = await Service.findById(deployment.service);
-    if (service.user.toString() !== userId) {
-        return;
-    }
-
-    io.to(userSocketId).emit('deployment:previous-logs', {
-        deploymentId: deploymentId,
-        logs: logsMap.get(deploymentId) || [],
-    });
-};
-
 const deploymentLogger = (message, userId, deploymentId) => {
-    let userSocketId = sockets.get(userId);
-    if (userSocketId) {
-        io.to(userSocketId).emit('deployment:log', {
-            deploymentId,
-            log: message
-        });
-    }
+        pubSubRedis.publish(pubSubChannel, JSON.stringify({ userId, event: 'deployment:log', data: { deploymentId, log: message } }));
+        // io.to(userSocketId).emit('deployment:log', {
+        //     deploymentId,
+        //     log: message
+        // });
 }
 
 const statusEmitter = (event, data, userId) => {
-    const socketId = sockets.get(userId);
-    if (socketId) {
-        io.to(socketId).emit(event, data);
-    }
+        // io.to(socketId).emit(event, data);
+        pubSubRedis.publish(pubSubChannel, JSON.stringify({ userId, event, data }));
 };
 
 async function runDeployment(deployment, service) {
     const startTime = Date.now();
     const logs = [];
-    logsMap.set(deployment._id.toString(), logs); // Store reference to logs in the map
 
     // Helper function to push logs and emit via socket.io
     const pushLog = (message) => {
         logs.push(message);
+        setTimeout(() => {
+            redis.batchInsertToList(deployment._id.toString(), logs.splice(0, logs.length)); // Batch insert logs to Redis every second
+        }, 100);
         deploymentLogger(message, service.user.toString(), deployment._id.toString());
     };
 
@@ -212,7 +228,7 @@ async function runDeployment(deployment, service) {
             error: err.message
         });
     } finally {
-        logsMap.delete(deployment._id.toString()); // Clean up logs from memory after deployment is done
+        redis.clearLogs(deployment._id.toString()); // Clear logs from Redis after deployment is done to free up memory
     }
 
     deployment.duration = Math.round((Date.now() - startTime) / 1000); // Calculate duration in seconds

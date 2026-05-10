@@ -4,33 +4,26 @@ import allRoutes from './routes/index.js';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
-import { createServer } from 'http';
+
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
-import { deployFromQueue, getDeploymentLogs } from './workers/deploymentWorker.js';
 import './ec2Host/ec2_monitor.js';
 import './ec2Host/sleep_monitor.js';
 import { consumeFromQueue, initializeQueue } from './RabbitMQ/queue.js';
 import { consumeFromQueue as consumeWakeupQueue, initializeQueue as initializeWakeupQueue } from './RabbitMQ/wakeupQueue.js';
 import { WakeServiceSubDomain, subdomainProxy } from './controllers/proxy.js';
+import Deployment from './models/Deployment.js';
+import Service from './models/Service.js';
+import { RedisService } from './redis-db/initilize.js';
+import { app, io, server, sockets } from './realtime/socket.js';
+import { createClient } from 'redis';
 dotenv.config();
-
-const app = express();
-const server = createServer(app);
-
-// Socket.io initialization
-export const io = new Server(server, {
-    cors: {
-        origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-        credentials: true,
-    }
-});
 
 function connectRabbitMQ() {
     initializeQueue()
-        .then(() => {
-            consumeFromQueue(deployFromQueue);
-        })
+        // .then(() => {
+        //     // consumeFromQueue(deployFromQueue);
+        // })
         .catch(err => {
             console.error('Failed to initialize RabbitMQ queue:', err);
             process.exit(1);
@@ -74,8 +67,6 @@ app.get('/', (req, res) => {
 
 app.use('/api', allRoutes);
 
-// store a map in memory for (userId: socketId)
-export const sockets = new Map();
 io.use((socket, next) => {
     try {
         const cookies = socket.handshake.headers.cookie || '';
@@ -99,6 +90,41 @@ io.use((socket, next) => {
         next(new Error('Authentication failed: invalid token'));
     }
 });
+
+const redis = await RedisService.create();
+export const getDeploymentLogs = async (deploymentId, userId) => {
+    const userSocketId = sockets.get(userId);
+
+    // check if the user is the owner of the deployment
+    const deployment = await Deployment.findById(deploymentId);
+    const service = await Service.findById(deployment.service);
+    if (!deployment) return;
+    if (!service) return;
+    if (service.user.toString() !== userId) {
+        return;
+    }
+
+    io.to(userSocketId).emit('deployment:previous-logs', {
+        deploymentId: deploymentId,
+        logs: await redis.get(deploymentId) || [],
+    });
+};
+
+async function initializeRedisSubscriber() {
+    const redisSubscriber = await RedisService.create();
+    await redisSubscriber.subscribe('deployment_logs', (message) => {
+        const { userId, event, data } = JSON.parse(message);
+        const socketId = sockets.get(userId);
+        if (socketId) {
+            io.to(socketId).emit(event, data);
+        }
+    });
+    console.log(
+        'Subscribed to deployment_logs'
+    );
+}
+
+initializeRedisSubscriber();
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
