@@ -11,8 +11,7 @@ export class RedisService {
             instance.client = RedisService.initilClient;
         } else {
             const client = createClient({
-                username: "default",
-                password: process.env.REDIS_PASSWORD,
+                ...(process.env.REDIS_PASSWORD && { username: "default", password: process.env.REDIS_PASSWORD }),
                 socket: {
                     host: process.env.REDIS_HOST,
                     port: Number(process.env.REDIS_PORT)

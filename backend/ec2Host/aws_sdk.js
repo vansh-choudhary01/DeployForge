@@ -16,7 +16,17 @@ export async function provisionNewEC2(pushLog) {
         SecurityGroupIds: [process.env.EC2_SECURITY_GROUP_ID],
         IamInstanceProfile: {
             Name: 'render-ec2-role'
-        }
+        },
+        BlockDeviceMappings: [
+            {
+                DeviceName: "/dev/sda1", // root volume
+                Ebs: {
+                    VolumeSize: 30, // 30GB
+                    VolumeType: "gp3",
+                    DeleteOnTermination: true
+                }
+            }
+        ]
     });
     // console.log('Provisioning new EC2 instance...');
     // console.log(command);
@@ -60,7 +70,7 @@ export async function provisionNewEC2(pushLog) {
         // if setup fails, stop the EC2 to avoid unnecessary costs
         await Ec2Registry.findByIdAndUpdate(ec2._id, { status: 'stopped' });
         await client.send(new StopInstancesCommand({ InstanceIds: [instanceId] }));
-    
+
         pushLog(`ERROR: EC2 instance stopped due to setup failure. Please check the logs and try deploy/redeploy again`);
         return new Error(`EC2 setup failed: ${err.message}`);
     }
@@ -145,6 +155,13 @@ async function setupInitialEC2(ec2Ip, ec2, pushLog) {
         `node --version`,
         `npm --version`,
         `aws --version`,
+
+        // add 2GB swap to prevent OOM during npm install
+        `sudo fallocate -l 2G /swapfile`,
+        `sudo chmod 600 /swapfile`,
+        `sudo mkswap /swapfile`,
+        `sudo swapon /swapfile`,
+        `echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab`,
         `echo "PUSH_LOG: EC2 setup completed successfully."`
     ];
 
