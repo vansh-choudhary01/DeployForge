@@ -25,7 +25,7 @@ export async function registerUser(req, res) {
             { upsert: true }
         );
 
-        await sendEmail(email, 'Your OTP for Render', `Your OTP is ${otp}, it will expire in 5 minutes.`);
+        await sendEmail(email, 'Your OTP for Deploy', `Your OTP is ${otp}, it will expire in 5 minutes.`);
 
         res.status(200).json({ message: 'OTP sent to email' });
     } catch (err) {

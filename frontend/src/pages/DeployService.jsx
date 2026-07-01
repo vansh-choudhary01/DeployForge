@@ -9,6 +9,7 @@ import {
   HiOutlineTrash,
   HiPlus,
   HiXMark,
+  HiOutlineFolderPlus,
 } from 'react-icons/hi2';
 import { projectAPI, serviceAPI } from '../utils/api.js';
 
@@ -20,6 +21,9 @@ export default function DeployService() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(false);
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [creatingProject, setCreatingProject] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [repoValidated, setRepoValidated] = useState(false);
@@ -56,6 +60,24 @@ export default function DeployService() {
       setProjects(response.data.projects || []);
     } catch (err) {
       console.error('Failed to fetch projects:', err);
+    }
+  };
+
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim()) return;
+    setCreatingProject(true);
+    try {
+      const response = await projectAPI.create({ name: newProjectName.trim() });
+      const created = response.data.project;
+      // Add to list immediately so the select has the option before we set the value
+      setProjects((prev) => [...prev, created]);
+      setFormData((prev) => ({ ...prev, projectId: created._id }));
+      setNewProjectName('');
+      setShowNewProject(false);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to create project');
+    } finally {
+      setCreatingProject(false);
     }
   };
 
@@ -305,21 +327,54 @@ export default function DeployService() {
                 <h2 className="text-xl font-black text-neutral-950">Configuration</h2>
 
                 <div className="mt-5">
-                  <label className="field-label">Project *</label>
-                  <select
-                    name="projectId"
-                    value={formData.projectId}
-                    onChange={handleInputChange}
-                    required
-                    className="field-input"
-                  >
-                    <option value="">Select a project</option>
-                    {projects.map((project) => (
-                      <option key={project._id} value={project._id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="field-label">Project *</label>
+                    <button
+                      type="button"
+                      onClick={() => { setShowNewProject((v) => !v); setNewProjectName(''); setError(''); }}
+                      className="mb-1 flex items-center gap-1 text-xs font-black text-teal-700 hover:text-teal-900"
+                    >
+                      {showNewProject ? <HiXMark className="h-4 w-4" /> : <HiOutlineFolderPlus className="h-4 w-4" />}
+                      {showNewProject ? 'Cancel' : 'New project'}
+                    </button>
+                  </div>
+
+                  {showNewProject ? (
+                    <div className="grid grid-cols-[1fr_auto] gap-3">
+                      <input
+                        type="text"
+                        value={newProjectName}
+                        onChange={(e) => setNewProjectName(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleCreateProject())}
+                        placeholder="my-project"
+                        autoFocus
+                        className="field-input"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleCreateProject}
+                        disabled={creatingProject || !newProjectName.trim()}
+                        className="btn-primary"
+                      >
+                        {creatingProject ? 'Creating...' : 'Create'}
+                      </button>
+                    </div>
+                  ) : (
+                    <select
+                      name="projectId"
+                      value={formData.projectId}
+                      onChange={handleInputChange}
+                      required
+                      className="field-input"
+                    >
+                      <option value="">Select a project</option>
+                      {projects.map((project) => (
+                        <option key={project._id} value={project._id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">

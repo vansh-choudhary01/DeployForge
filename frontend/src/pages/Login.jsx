@@ -13,8 +13,8 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
-    email: '',
-    password: '',
+    email: 'resume@gmail.com',
+    password: 'resume',
   });
 
   const handleChange = (e) => {
@@ -58,7 +58,7 @@ export default function Login() {
             </span>
           </Link>
 
-          <div className="max-w-lg">
+          <div className="absolute inset-0 flex flex-col items-start justify-center p-10 max-w-lg">
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-teal-100">Welcome back</p>
             <h1 className="mt-4 text-5xl font-black tracking-tight">Ship the next release from your command center.</h1>
             <p className="mt-5 text-sm leading-6 text-stone-200">
@@ -112,7 +112,11 @@ export default function Login() {
               />
             </div>
 
-            <button type="submit" disabled={loading} className="btn-primary mt-6 w-full">
+            <div className="mt-5 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3">
+              <p className="text-xs font-bold text-teal-800">Demo credentials pre-filled — just hit Sign In to explore.</p>
+            </div>
+
+            <button type="submit" disabled={loading} className="btn-primary mt-4 w-full">
               <HiOutlineLockClosed className="h-5 w-5" />
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
