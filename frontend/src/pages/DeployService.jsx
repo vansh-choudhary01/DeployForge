@@ -195,6 +195,14 @@ export default function DeployService() {
   const handleDeploy = async (e) => {
     e.preventDefault();
     setError('');
+    if (showNewProject) {
+      setError('Click "Create" to save the new project before deploying.');
+      return;
+    }
+    if (!formData.projectId) {
+      setError('Please select or create a project before deploying.');
+      return;
+    }
     setLoading(true);
 
     try {
@@ -568,7 +576,7 @@ NODE_ENV=production`}
               </section>
 
               <div className="flex flex-col gap-3 sm:flex-row">
-                <button type="submit" disabled={loading} className="btn-primary flex-1 py-3">
+                <button type="submit" disabled={loading || showNewProject || !formData.projectId} className="btn-primary flex-1 py-3">
                   <HiOutlineRocketLaunch className="h-5 w-5" />
                   {loading ? 'Deploying...' : 'Deploy Service'}
                 </button>
