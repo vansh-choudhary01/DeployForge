@@ -308,10 +308,10 @@ async function deployViaSSH(deployment, service, logs, pushLog) {
         if (oldInstanceRunning) {
             // Keep old container running until new one is verified
             commands.push(`rm -rf ${targetAppFolder}`);
-            commands.push(`docker rm -f ${targetContainerName} || true`);
+            commands.push(`docker rm -f ${targetContainerName} >/dev/null 2>&1 || true`);
         } else {
-            commands.push(`docker stop ${appName} || true`);
-            commands.push(`docker rm ${appName} || true`);
+            commands.push(`docker stop ${appName} >/dev/null 2>&1 || true`);
+            commands.push(`docker rm ${appName} >/dev/null 2>&1 || true`);
             commands.push(`rm -rf ${targetAppFolder}`);
         }
 
@@ -401,8 +401,8 @@ DOCKERFILEEOF`);
                 `cd ~/apps/${targetAppFolder}`,
                 `cd ${relativeRootDirectory}`,
 
-                `docker stop ${targetContainerName} || true`,
-                `docker rm ${targetContainerName} || true`,
+                `docker stop ${targetContainerName} >/dev/null 2>&1 || true`,
+                `docker rm ${targetContainerName} >/dev/null 2>&1 || true`,
 
                 `docker run -d --name ${targetContainerName} ${service.subdomain === 'api' ? '--network appnet' : ''} -e PORT=${detectedPort} -p ${port}:${detectedPort}${environmentVariables && environmentVariables.length > 0 ? ' --env-file .env' : ''} ${appName}`
             ];
@@ -457,8 +457,8 @@ DOCKERFILEEOF`);
             `aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${ecrRepo}`,
             `docker tag app-${service._id} ${imageTag}`,
             `docker push ${imageTag}`,
-            `docker rmi app-${service._id} || true`,
-            `docker rmi ${imageTag} || true`
+            `docker rmi app-${service._id} >/dev/null 2>&1 || true`,
+            `docker rmi ${imageTag} >/dev/null 2>&1 || true`
         ], logs, pushLog, service.ec2Host?.ip);
 
         service.imageUrl = imageTag;
@@ -471,7 +471,7 @@ DOCKERFILEEOF`);
             await stopAndRemoveContainer(tempName, pushLog, service.ec2Host?.ip);
             await executeSSHCommands([
                 `rm -rf ~/apps/${stagingDir} || true`,
-                `docker rmi app-${service._id} || true`,
+                `docker rmi app-${service._id} >/dev/null 2>&1 || true`,
             ], [], pushLog, service.ec2Host?.ip);
         } catch (cleanupError) {
             pushLog(`[${new Date().toISOString()}] WARNING: Failure cleanup was incomplete: ${cleanupError.message}`);

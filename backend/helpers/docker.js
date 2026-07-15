@@ -71,8 +71,8 @@ export async function detectContainerPort(containerName, pushLog, ip) {
 export async function stopAndRemoveContainer(containerName, pushLog, ip) {
     try {
         await executeSSHCommands([
-            `docker stop ${containerName} || true`,
-            `docker rm ${containerName} || true`
+            `docker stop ${containerName} >/dev/null 2>&1 || true`,
+            `docker rm ${containerName} >/dev/null 2>&1 || true`
         ], [], pushLog, ip);
     } catch (err) {
         pushLog(`[${new Date().toISOString()}] Warning: could not stop/remove ${containerName}: ${err.message}`);

@@ -1,7 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 const SSH_REFUSED_PATTERN = /econnrefused.*:22|connect.*refused.*(?:port\s*)?22|ssh.*connection refused/i;
-const PLATFORM_FAILURE_PATTERN = /etimedout.*:22|ssh.*(?:handshake|not ready|unavailable)|ssh never became|cannot connect to (?:the )?docker daemon|error response from daemon|docker daemon|port is already allocated|no space left on device|disk quota exceeded|cannot allocate memory|oomkilled|enospc|enetunreach|ehostunreach|eai_again|(?:ec2|ecr|s3|aws|rabbitmq|redis|mongodb).*(?:unavailable|connection refused|timeout|timed out|throttl|accessdenied|failed)|(?:connection refused|timeout).*(?:rabbitmq|redis|mongodb)/i;
+const PLATFORM_FAILURE_PATTERN = /etimedout.*:22|ssh.*(?:handshake|not ready|unavailable)|ssh never became|cannot connect to (?:the )?docker daemon|docker daemon.*(?:unavailable|failed|not running)|port is already allocated|no space left on device|disk quota exceeded|cannot allocate memory|oomkilled|enospc|enetunreach|ehostunreach|eai_again|(?:ec2|ecr|s3|aws|rabbitmq|redis|mongodb).*(?:unavailable|connection refused|timeout|timed out|throttl|accessdenied|failed)|(?:connection refused|timeout).*(?:rabbitmq|redis|mongodb)/i;
+const USER_FAILURE_PATTERN = /repository not found|authentication failed|permission denied \(publickey\)|remote branch .* not found|couldn't find remote ref|pathspec .* did not match|npm (?:err!|error)|missing script|module not found|cannot find module|syntaxerror|referenceerror/i;
 
 const RULES = [
     [/repository not found|authentication failed|permission denied \(publickey\)/i, "The repository could not be accessed.", "The URL is wrong, the repository is private, or access was not granted.", ["Confirm the repository URL and branch.", "Grant repository access, then redeploy."], false],
@@ -11,7 +12,7 @@ const RULES = [
     [/heap out of memory|cannot allocate memory|out of memory|oomkilled/i, "The build or application ran out of memory.", "The host or container lacks enough memory for this build.", ["Reduce build memory use or upgrade the instance.", "Check for unusually large builds."], false],
     [/address already in use|port is already allocated|bind.*failed/i, "The application port is already in use.", "Another process or container is using the selected port.", ["Stop the conflicting process or container.", "Redeploy to allocate a free port."], true],
     [/unable to detect listening port|container .* is not running|exited with code|health check/i, "The application did not stay available after startup.", "The start command crashed, or the app did not listen on process.env.PORT and 0.0.0.0.", ["Check the startup error immediately above this message.", "Listen on process.env.PORT and host 0.0.0.0."], false],
-    [SSH_REFUSED_PATTERN, "The Claude machine is currently down, so the deployment cannot proceed.", "The deployment infrastructure is temporarily unavailable. This is not caused by your application.", ["Wait a few minutes and retry the deployment.", "If it continues to fail, contact support."], true],
+    [SSH_REFUSED_PATTERN, "The deployment platform is currently unavailable, so the deployment cannot proceed.", "A deployment machine or internal service is temporarily down. This is not caused by your application.", ["Wait a few minutes and retry the deployment.", "If it continues to fail, contact support."], true],
     [/timed out|econnreset|connection reset|eai_again|temporary failure|ssh never became available/i, "A temporary connection failure interrupted deployment.", "The host, registry, or Git provider was temporarily unreachable.", ["Wait briefly and redeploy.", "If it repeats, check host networking and provider status."], true],
 ];
 
@@ -36,12 +37,33 @@ function localDiagnosis(errorMessage, logText) {
     };
 }
 
+function knownUserDiagnosis(evidence, service) {
+    if (!USER_FAILURE_PATTERN.test(evidence)) return null;
+
+    const missingBranch = evidence.match(/remote branch\s+([^\s]+)\s+not found/i);
+    if (missingBranch) {
+        const branch = missingBranch[1];
+        return {
+            summary: `The configured Git branch "${branch}" was not found.`,
+            likelyCause: `This service is configured to deploy the "${service?.gitBranch || branch}" branch, but that branch does not exist in the repository.`,
+            suggestedSteps: [
+                "Check the repository's branch list.",
+                "Update the service to use an existing branch, then redeploy.",
+            ],
+            retryable: false,
+            source: "local",
+        };
+    }
+
+    return localDiagnosis("", evidence);
+}
+
 function simplifyPlatformFailure(diagnosis, evidence) {
     if (!diagnosis.platformRelated && !SSH_REFUSED_PATTERN.test(evidence) && !PLATFORM_FAILURE_PATTERN.test(evidence)) return diagnosis;
 
     return {
-        summary: "Claude's deployment backend is currently unavailable, so the deployment cannot proceed.",
-        likelyCause: "A Claude machine or internal deployment service is temporarily down. This is not caused by your application.",
+        summary: "The deployment platform is currently unavailable, so the deployment cannot proceed.",
+        likelyCause: "A deployment machine or internal service is temporarily down. This is not caused by your application.",
         suggestedSteps: ["Wait a few minutes and retry the deployment.", "If it continues to fail, contact support."],
         retryable: true,
         source: diagnosis.source,
@@ -50,12 +72,15 @@ function simplifyPlatformFailure(diagnosis, evidence) {
 
 export async function debugDeploymentFailure({ error, logs = [], service }) {
     const errorMessage = redact(error?.message || String(error || "Unknown deployment error"));
-    const logText = redact(logs
+    const recentLogs = logs.slice(-10);
+    const logText = redact(recentLogs
         .map(log => typeof log === "string" ? log : log?.message)
         .filter(Boolean)
-        .join("\n")
-        .slice(-12000));
-    const evidence = `${errorMessage}\n${logText}`;
+        .join("\n"));
+    const evidence = `${logText}\n${errorMessage}`;
+    const userDiagnosis = knownUserDiagnosis(evidence, service);
+    if (userDiagnosis) return userDiagnosis;
+
     const fallback = simplifyPlatformFailure(localDiagnosis(errorMessage, logText), evidence);
     if (!process.env.GEMINI_API_KEY) return fallback;
 
@@ -63,7 +88,7 @@ export async function debugDeploymentFailure({ error, logs = [], service }) {
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         const response = await ai.models.generateContent({
             model: process.env.GEMINI_DEBUG_MODEL || "gemini-3.5-flash",
-            contents: `Diagnose this deployment failure using only the supplied data. Do not invent evidence or claim a fix was applied. Write concise, non-technical messages for an application owner. Set platformRelated true when the cause belongs to Claude's backend, deployment machines, AWS infrastructure, Docker daemon, SSH connectivity, internal queues or databases, platform networking, port allocation, disk, or memory. Set it false for the user's repository, branch, dependencies, build command, start command, or application code. Never ask the user to inspect platform infrastructure; that is support's responsibility. Mark retryable true only for transient failures.\n\nService (environment values omitted):\n${JSON.stringify({
+            contents: `Diagnose this deployment failure using only the supplied data. First inspect the last 10 log entries and identify the earliest meaningful root error. Ignore later cleanup noise such as "No such container", "No such image", or successful cleanup commands. Do not invent evidence or claim a fix was applied. Write concise, non-technical messages for an application owner. Set platformRelated true when the cause belongs to the deployment platform's backend, deployment machines, AWS infrastructure, Docker daemon, SSH connectivity, internal queues or databases, platform networking, port allocation, disk, or memory. Set it false for the user's repository, branch, dependencies, build command, start command, or application code. Never ask the user to inspect platform infrastructure; that is support's responsibility. Mark retryable true only for transient failures.\n\nLast 10 redacted logs:\n${logText || "No logs captured."}\n\nService (environment values omitted):\n${JSON.stringify({
                 deploymentType: service?.deploymentType,
                 branch: service?.gitBranch,
                 rootDirectory: service?.rootDirectory,
@@ -71,7 +96,7 @@ export async function debugDeploymentFailure({ error, logs = [], service }) {
                 preDeployCommand: service?.preDeployCommand,
                 startCommand: service?.startCommand,
                 environmentVariableNames: service?.environmentVariables?.map(item => item.key),
-            })}\n\nFinal error:\n${errorMessage}\n\nRecent redacted logs:\n${logText || "No logs captured."}`,
+            })}\n\nFinal error:\n${errorMessage}`,
             config: {
                 temperature: 0.1,
                 responseMimeType: "application/json",
