@@ -28,7 +28,7 @@ export default function Sidebar() {
     <aside className="fixed left-0 top-0 z-30 hidden h-screen w-72 overflow-y-auto border-r border-white/10 bg-neutral-950 px-4 py-5 text-white shadow-2xl lg:block">
       <Link to="/" className="flex items-center gap-3 rounded-lg px-2 pb-5">
         <span className="grid h-11 w-11 place-items-center rounded-lg bg-teal-300 text-neutral-950">
-          <HiOutlineSparkles className="h-6 w-6" />
+          <img src="/logo.svg" alt="Deploy Control Room" className="h-7 w-7" />
         </span>
         <span>
           <span className="block text-xl font-black tracking-tight">Deploy</span>
@@ -66,7 +66,7 @@ export default function Sidebar() {
 
       <div className="absolute bottom-5 left-4 right-4 rounded-lg border border-white/10 bg-white/[0.04] p-4">
         <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-lg bg-white text-neutral-950 font-black">D</div>
+          <img src="/logo.svg" alt="Deploy Control Room" className="h-10 w-10 rounded-lg" />
           <div>
             <p className="text-sm font-bold text-white">Deploy stack</p>
             <p className="text-xs text-stone-400">Server and static hosting</p>

@@ -7,6 +7,7 @@ import { AuthContext, AuthProvider } from './contexts/AuthContext';
 // Components
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
+import Seo from './components/Seo';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -52,6 +53,7 @@ function App() {
   return (
     <AuthProvider>
       <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Seo />
         <Routes>
           <Route path="/" element={<Landing />} />
 

@@ -9,7 +9,6 @@ import {
   HiOutlineCloudArrowUp,
   HiOutlineCpuChip,
   HiOutlineShieldCheck,
-  HiOutlineSparkles,
   HiServerStack,
 } from 'react-icons/hi2';
 
@@ -59,7 +58,7 @@ export default function Landing() {
         <header className="relative z-10 mx-auto flex max-w-7xl items-center justify-between px-6 py-6 lg:px-8">
           <Link to="/" className="flex items-center gap-3">
             <span className="grid h-10 w-10 place-items-center rounded-lg bg-white text-neutral-950 shadow-lg">
-              <HiOutlineSparkles className="h-5 w-5" />
+              <img src="/logo.svg" alt="Deploy Control Room" className="h-6 w-6" />
             </span>
             <span>
               <span className="block text-lg font-black tracking-tight">Deploy</span>
