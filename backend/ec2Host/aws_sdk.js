@@ -156,8 +156,8 @@ async function setupInitialEC2(ec2Ip, ec2, pushLog) {
         `npm --version`,
         `aws --version`,
 
-        // add 2GB swap to prevent OOM during npm install
-        `sudo fallocate -l 2G /swapfile`,
+        // add 5GB swap to prevent OOM during npm install
+        `sudo fallocate -l 5G /swapfile`,
         `sudo chmod 600 /swapfile`,
         `sudo mkswap /swapfile`,
         `sudo swapon /swapfile`,
