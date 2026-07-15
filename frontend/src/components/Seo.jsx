@@ -5,6 +5,7 @@ const siteName = 'Deploy Control Room';
 const defaultTitle = 'Deploy Control Room | Deploy GitHub Apps With Live Logs';
 const defaultDescription =
   'Deploy GitHub repositories as managed static and server apps with live logs, project workspaces, environment variables, and health checks.';
+const defaultSiteUrl = 'https://naaspeeti.xyz';
 
 const routeSeo = {
   '/': {
@@ -56,7 +57,7 @@ function getSiteUrl() {
     return window.location.origin;
   }
 
-  return '';
+  return defaultSiteUrl;
 }
 
 function setMeta(selector, attribute, value) {
