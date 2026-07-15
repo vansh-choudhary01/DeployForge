@@ -11,6 +11,7 @@ import { createEcrRepo } from "../ec2Host/aws_ecr.js";
 import { deployFrontend } from "../s3Host/deployFrontend.js";
 import { RedisService } from "../redis-db/initilize.js";
 import { consumeFromQueue, initializeQueue } from "../RabbitMQ/queue.js";
+import { debugDeploymentFailure, formatDeploymentDiagnosis } from "../agents/deploymentDebugger.js";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import { createClient } from "redis";
@@ -69,9 +70,8 @@ export async function deployFromQueue(deploymentId) {
             let logs = [];
             const pushLog = (message) => {
                 logs.push(message);
-                setTimeout(() => {
-                    redis.batchInsertToList(deployment._id.toString(), logs.splice(0, logs.length)); // Batch insert logs to Redis every second
-                }, 100);
+                redis.insertToList(deployment._id.toString(), message)
+                    .catch(err => console.error('Failed to cache deployment log:', err.message));
                 deploymentLogger(message, service.user.toString(), deployment._id.toString());
             };
             // For static deployments, we can directly call the frontend deploy function without going through the SSH deployment process
@@ -103,13 +103,24 @@ export async function deployFromQueue(deploymentId) {
                         { upsert: true }
                     );
                 })
-                .catch(err => {
+                .catch(async err => {
                     console.error('Static deployment error:', err);
                     pushLog(`[${new Date().toISOString()}] ERROR: ${err.message}`);
+                    pushLog(`[${new Date().toISOString()}] Debugging agent is analyzing the failure...`);
+                    const diagnosis = await debugDeploymentFailure({ error: err, logs, service });
+                    const readableError = formatDeploymentDiagnosis(diagnosis);
+                    pushLog(`[${new Date().toISOString()}] DEBUGGER: ${readableError}`);
+                    deployment.error = readableError;
+                    deployment.diagnosis = diagnosis;
                     deploymentStatus = 'failed';
-                }).finally(() => {
-                    Deployment.updateOne({ _id: deployment._id }, { status: deploymentStatus, logs }).exec();
-                    Service.updateOne({ _id: service._id }, { status: deploymentStatus }).exec();
+                    statusEmitter('deployment:failed', {
+                        deploymentId: deployment._id.toString(), status: 'failed', error: readableError, diagnosis
+                    }, service.user.toString());
+                }).finally(async () => {
+                    await Promise.all([
+                        Deployment.updateOne({ _id: deployment._id }, { status: deploymentStatus, logs, error: deployment.error, diagnosis: deployment.diagnosis }),
+                        Service.updateOne({ _id: service._id }, { status: deploymentStatus })
+                    ]);
                 });
             return;
         }
@@ -120,9 +131,8 @@ export async function deployFromQueue(deploymentId) {
             // Helper function to push logs and emit via socket.io
             const pushLog = (message) => {
                 logs.push(message);
-                setTimeout(() => {
-                    redis.batchInsertToList(deployment._id.toString(), logs.splice(0, logs.length)); // Batch insert logs to Redis every second
-                }, 100);
+                redis.insertToList(deployment._id.toString(), message)
+                    .catch(err => console.error('Failed to cache deployment log:', err.message));
                 deploymentLogger(message, service.user.toString(), deployment._id.toString());
             };
             const bestEc2 = await getBestEc2(pushLog);
@@ -160,9 +170,8 @@ async function runDeployment(deployment, service) {
     // Helper function to push logs and emit via socket.io
     const pushLog = (message) => {
         logs.push(message);
-        setTimeout(() => {
-            redis.batchInsertToList(deployment._id.toString(), logs.splice(0, logs.length)); // Batch insert logs to Redis every second
-        }, 100);
+        redis.insertToList(deployment._id.toString(), message)
+            .catch(err => console.error('Failed to cache deployment log:', err.message));
         deploymentLogger(message, service.user.toString(), deployment._id.toString());
     };
 
@@ -217,15 +226,23 @@ async function runDeployment(deployment, service) {
         console.error('Deployment error:', err);
         pushLog(`[${new Date().toISOString()}] ERROR: ${err.message}`);
 
+        pushLog(`[${new Date().toISOString()}] Debugging agent is analyzing the failure...`);
+        const diagnosis = await debugDeploymentFailure({ error: err, logs, service });
+        const readableError = formatDeploymentDiagnosis(diagnosis);
+        pushLog(`[${new Date().toISOString()}] DEBUGGER: ${readableError}`);
+
         const running = await isContainerRunning(`app-${service._id}`, service.ec2Host?.ip);
         service.status = running ? "running" : "failed";
         deployment.status = "failed";
+        deployment.error = readableError;
+        deployment.diagnosis = diagnosis;
 
         // Emit deployment failed event
         emitToUser('deployment:failed', {
             deploymentId: deployment._id.toString(),
             status: 'failed',
-            error: err.message
+            error: readableError,
+            diagnosis
         });
     } finally {
         redis.clearLogs(deployment._id.toString()); // Clear logs from Redis after deployment is done to free up memory
@@ -450,11 +467,15 @@ DOCKERFILEEOF`);
         // On deploy failure, if we did blue-green attempt, remove temporary deployment and keep old running
         const stagingDir = `${appName}-new`;
 
-        await stopAndRemoveContainer(tempName, pushLog, service.ec2Host?.ip);
-        await executeSSHCommands([
-            `rm -rf ~/apps/${stagingDir} || true`,
-            `docker rmi app-${service._id} || true`,
-        ], [], pushLog, service.ec2Host?.ip);
+        try {
+            await stopAndRemoveContainer(tempName, pushLog, service.ec2Host?.ip);
+            await executeSSHCommands([
+                `rm -rf ~/apps/${stagingDir} || true`,
+                `docker rmi app-${service._id} || true`,
+            ], [], pushLog, service.ec2Host?.ip);
+        } catch (cleanupError) {
+            pushLog(`[${new Date().toISOString()}] WARNING: Failure cleanup was incomplete: ${cleanupError.message}`);
+        }
 
         throw new Error(`SSH deployment failed: ${err.message}`);
     }

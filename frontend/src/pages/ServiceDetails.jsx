@@ -274,6 +274,12 @@ export default function ServiceDetails() {
     ],
   ];
 
+  const latestDeployment = deployments[0];
+  const candidateDiagnosis = latestDeployment?.status === 'failed' ? latestDeployment.diagnosis : null;
+  const latestDiagnosis = candidateDiagnosis?.summary && candidateDiagnosis?.likelyCause
+    ? candidateDiagnosis
+    : null;
+
   return (
     <div className="space-y-8">
       <button onClick={() => navigate('/services')} className="btn-secondary px-3">
@@ -303,6 +309,32 @@ export default function ServiceDetails() {
 
         <div className="p-7">
           {error && <div className="alert-error mb-6">{error}</div>}
+
+          {latestDiagnosis && (
+            <div className="mb-6 rounded-lg border border-rose-200 bg-rose-50 p-5 text-rose-950">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-rose-700">
+                Latest deployment diagnosis
+              </p>
+              <h2 className="mt-2 text-xl font-black">{latestDiagnosis.summary}</h2>
+              <p className="mt-3 text-sm">
+                <strong>Likely cause:</strong> {latestDiagnosis.likelyCause}
+              </p>
+              {latestDiagnosis.suggestedSteps?.length > 0 && (
+                <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm">
+                  {latestDiagnosis.suggestedSteps.map((step, index) => (
+                    <li key={`${step}-${index}`}>{step}</li>
+                  ))}
+                </ol>
+              )}
+              <button
+                type="button"
+                onClick={() => navigate(`/deployments/${latestDeployment._id}/logs`)}
+                className="btn-secondary mt-4"
+              >
+                View full deployment logs
+              </button>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             {detailItems.map(([label, value]) => (

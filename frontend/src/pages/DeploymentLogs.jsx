@@ -120,8 +120,17 @@ export default function DeploymentLogs() {
 
     newSocket.on('deployment:failed', (data) => {
       if (data.deploymentId === deploymentId) {
-        setDeployment((prev) => (prev ? { ...prev, status: data.status } : null));
-        setError(data.error || 'Deployment failed');
+        setDeployment((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: data.status,
+                error: data.error,
+                diagnosis: data.diagnosis || prev.diagnosis,
+              }
+            : null
+        );
+        setError(data.diagnosis?.summary || data.error || 'Deployment failed');
       }
     });
 
@@ -144,7 +153,11 @@ export default function DeploymentLogs() {
   const fetchDeployment = async () => {
     try {
       const response = await deploymentAPI.getById(deploymentId);
-      setDeployment(response.data.data);
+      const deploymentData = response.data.data;
+      setDeployment(deploymentData);
+      if (deploymentData.status === 'failed') {
+        setError(deploymentData.diagnosis?.summary || deploymentData.error || 'Deployment failed. Review the build output below.');
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to fetch deployment');
     }
@@ -175,6 +188,9 @@ export default function DeploymentLogs() {
   };
 
   const isSocketConnected = socket?.connected;
+  const hasDiagnosis = Boolean(
+    deployment?.diagnosis?.summary && deployment?.diagnosis?.likelyCause
+  );
 
   return (
     <div className="space-y-8">
@@ -230,7 +246,24 @@ export default function DeploymentLogs() {
               </div>
             )}
 
-            {error && <div className="alert-error mt-5">{error}</div>}
+            {error && !hasDiagnosis && <div className="alert-error mt-5">{error}</div>}
+
+            {hasDiagnosis && (
+              <div className="mt-5 rounded-lg border border-rose-200 bg-rose-50 p-5 text-rose-950">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-rose-700">
+                  Deployment diagnosis
+                </p>
+                <h2 className="mt-2 text-xl font-black">{deployment.diagnosis.summary}</h2>
+                <p className="mt-3 text-sm"><strong>Likely cause:</strong> {deployment.diagnosis.likelyCause}</p>
+                {deployment.diagnosis.suggestedSteps?.length > 0 && (
+                  <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm">
+                    {deployment.diagnosis.suggestedSteps.map((step, index) => (
+                      <li key={`${step}-${index}`}>{step}</li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            )}
           </div>
         </section>
       )}

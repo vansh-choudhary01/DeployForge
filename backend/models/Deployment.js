@@ -30,6 +30,16 @@ const deploymentSchema = new mongoose.Schema({
 
   duration: Number, // in seconds
 
+  error: String,
+
+  diagnosis: {
+    summary: String,
+    likelyCause: String,
+    suggestedSteps: [String],
+    retryable: Boolean,
+    source: String
+  },
+
 }, { timestamps: true });
 
 export default mongoose.model("Deployment", deploymentSchema);
